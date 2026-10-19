@@ -27,6 +27,14 @@ server.ThreadingHTTPServer(('127.0.0.1',server.PORT),server.Handler).serve_forev
   const quote=await select('.theory',35);await page.waitForSelector('.theory mark');assert.equal(await page.locator('#annotation-dialog[open]').count(),0);assert.equal(await page.locator('.reading-highlight-actions[open]').count(),0);assert.equal(calls(),0);
   let saved=(await snapshot()).events.find(e=>e.kind==='annotation');assert.equal(saved.data.type,'highlight');assert.equal(saved.data.quote,quote);assert.equal(saved.data.comment,'');assert.equal(saved.data.shareWithTutor,false);const annotationId=saved.id;
   await page.locator('.theory mark').first().click();await page.getByRole('button',{name:'Dejar una nota',exact:true}).click();await page.getByLabel('Tu comentario',{exact:true}).fill('Una nota sobre este fragmento.');await page.getByRole('button',{name:'Guardar anotación',exact:true}).click();await page.waitForSelector('#annotation-dialog[open]',{state:'detached'});await page.waitForSelector('.note-inline');assert.equal(calls(),0);
+  await page.mouse.move(0,0);
+  assert.equal(await page.locator('.note-inline .annotation-actions').first().evaluate(el=>getComputedStyle(el).opacity),'0');
+  await page.locator('.note-inline').first().hover();
+  assert.equal(await page.locator('.note-inline .annotation-actions').first().evaluate(el=>getComputedStyle(el).opacity),'1');
+  await page.mouse.move(0,0);
+  await page.locator('.note-inline .annotation-actions button').first().focus();
+  assert.equal(await page.locator('.note-inline .annotation-actions').first().evaluate(el=>getComputedStyle(el).opacity),'1');
+
   saved=(await snapshot()).events.find(e=>e.id===annotationId);assert.equal(saved.data.comment,'Una nota sobre este fragmento.');assert.equal(saved.data.quote,quote);assert.equal((await snapshot()).annotationRevisions.length,1);
   await page.locator('.theory mark').first().click();await page.getByRole('button',{name:'Consultar al tutor',exact:true}).last().click();await page.waitForFunction(()=>document.getElementById('tutor-chat').textContent.includes('Explicación final del fragmento.'));assert.equal(calls(),1);assert((await snapshot()).events.some(e=>e.kind==='chat_message'&&e.data.message.includes(quote)));
   await page.keyboard.press('Escape');await page.keyboard.press('Space');await page.keyboard.press('n');await page.evaluate(()=>ClassNotes.openList());await page.locator('.class-note-link').filter({hasText:'PDF resaltados'}).click();await page.waitForFunction(()=>document.getElementById('pdf-loading')?.hidden===true);

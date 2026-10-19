@@ -11,7 +11,15 @@ const E = (tag, attrs={}, ...children) => {
   for(const child of children.flat()) if(child!==null && child!==undefined) node.append(child instanceof Node ? child : document.createTextNode(String(child)));
   return node;
 };
-let state, cid=GlosaRoom.storage.getItem('study-course'), lid=GlosaRoom.storage.getItem('study-lesson'), view='study', filter='important', selection=null, editingAnnotation=null, busy=false;
+// SVG compartidos: nombres accesibles y tooltip en cada control.
+function actionIcon(name){
+  const paths={edit:'M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L9 17l-4 1 1-4Z',trash:'M3 6h18 M9 6V4h6v2 M5 6l1 14h12l1-14 M10 10v6 M14 10v6',tutor:'M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-3 2 2-6a8.5 8.5 0 1 1 18-4.5Z',folder:'M3 7V4h6l2 3h10v13H3Z',download:'M12 3v12 m-5-5 5 5 5-5 M4 16v5h16v-5',note:'M5 3h10l4 4v14H5z M15 3v5h4 M8 12h8 M8 16h5 M20 3v4 M18 5h4'};
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'18',height:'18',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false'}))svg.setAttribute(key,value);
+  const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',paths[name]);svg.append(path);return svg;
+}
+function iconAction(label,icon,attrs={}){return E('button',{type:'button',...attrs,class:(attrs.class||'text-button')+' icon-action','aria-label':label,title:label},actionIcon(icon));}
+let state, cid=GlosaRoom.storage.getItem('study-course'), lid=GlosaRoom.storage.getItem('study-lesson'), view='study', filter='important', selection=null, noteSelection=null, editingAnnotation=null, busy=false;
 let activeStarted=Date.now(), clockLesson=null, timer=null, studying=false;
 // Resaltados: paleta compartida con el servidor (server.py HIGHLIGHT_COLORS).
 const HIGHLIGHT_COLORS=[['yellow','Amarillo'],['green','Verde'],['blue','Azul'],['pink','Rosa']];
@@ -68,6 +76,28 @@ async function api(path,body) {
   const data=await response.json();
   if(!response.ok) throw new Error(data.error || 'No se completó la operación.');
   return data;
+}
+async function tutorStream(path,body,onText){
+  const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,stream:true})});
+  if(!response.ok){const error=await response.json();throw Error(error.error||'No se completó la consulta.');}
+  if(!response.headers.get('Content-Type')?.includes('application/x-ndjson'))return response.json();
+  const reader=response.body.getReader(),decoder=new TextDecoder();let pending='',result,finished=false;
+  const consume=line=>{
+    if(!line.trim())return;
+    const event=JSON.parse(line);
+    if(event.type==='error')throw Error(event.error);
+    if(event.type==='text')onText?.(event.text);
+    if(event.type==='done'){result=event.result;finished=true;}
+  };
+  try{
+    while(true){const {value,done}=await reader.read();pending+=decoder.decode(value||new Uint8Array(),{stream:!done});let end;
+      while((end=pending.indexOf('\n'))>=0){const line=pending.slice(0,end);pending=pending.slice(end+1);consume(line);}
+      if(done)break;
+    }
+    if(pending.trim())consume(pending);
+    if(!finished)throw Error('La respuesta se interrumpió. Recargá la conversación antes de reintentar.');
+    return result;
+  }finally{reader.releaseLock();}
 }
 function notify(message) { $('notice').textContent=message; $('notice').style.display='block';clearTimeout(timer);timer=setTimeout(()=>$('notice').style.display='none',6500); }
 function course() { return state.courses.find(c=>c.id===cid); }
@@ -129,9 +159,9 @@ function safeSourceUrl(source,page) {const u=source.url || '';return (u.startsWi
 function renderStudy() {
   const l=lesson(), recommendation=state.recommendations[cid];
   const days=Math.max(0,Math.round((Date.parse(state.settings.examDate)-Date.parse(state.localDate))/86400000));
-  const nodes=[E('div',{class:'lesson-meta'},E('span',{class:'eyebrow'},l.unit)),E('h1',{},l.title),E('p',{class:'lede'},l.intro),E('details',{class:'reading-details'},E('summary',{},`${l.minutes} min de lectura · Recorrido y fuentes`),E('p',{class:'muted'},`${days} días hasta el parcial. `+(l.id===recommendation.lessonId?recommendation.reason:`La recomendación actual es «${course().lessons.find(x=>x.id===recommendation.lessonId)?.title}».`)),E('p',{class:'muted'},'v selecciona texto; a abre una anotación. También podés seleccionar una frase con el mouse. Las fuentes figuran debajo de cada bloque.'))];
+  const nodes=[E('div',{class:'lesson-meta'},E('span',{class:'eyebrow'},l.unit)),E('h1',{},l.title),E('p',{class:'lede'},l.intro),E('details',{class:'reading-details'},E('summary',{},`${days} min de lectura · Recorrido y fuentes`),E('p',{class:'muted'},`${days} días hasta el parcial. `+(l.id===recommendation.lessonId?recommendation.reason:`La recomendación actual es «${course().lessons.find(x=>x.id===recommendation.lessonId)?.title}».`)),E('p',{class:'muted'},'Seleccioná texto para resaltarlo; al hacer clic en el resaltado podés generar una nota. Desde el teclado, v selecciona y a anota. Las fuentes figuran debajo de cada bloque.'))];
   if(state.room?.tutorial){
-    nodes[3]=E('details',{class:'reading-details'},E('summary',{},`${l.minutes} min · Probá a tu ritmo`),E('p',{class:'muted'},'Tus prácticas del tutorial quedan separadas de los pliegos. No hay un examen asociado a esta guía.'));
+    nodes[4]=E('details',{class:'reading-details'},E('summary',{},`${l.minutes} min · Probá a tu ritmo`),E('p',{class:'muted'},'Tus prácticas del tutorial quedan separadas de los pliegos. No hay un examen asociado a esta guía.'));
     nodes.push(E('div',{class:'pliego-actions'},E('button',{class:'text-button',onclick:()=>GlosaRoom.open()},'Abrir Margen'),E('button',{class:'text-button',onclick:()=>$('workspace-mode-button').click()},'Explorar modos · g m')));
   }
   if(l.warning) nodes.push(E('div',{class:'source-warning'},l.warning));
@@ -182,7 +212,7 @@ function renderStudy() {
   nodes.push(E('details',{class:'continuation-handoff'},E('summary',{},pending?'Continuación solicitada':'Pedir continuación'),E('p',{class:'muted'},'El agente puede preparar un refuerzo con tus respuestas y dudas cuando retomes el trabajo con él.'),E('button',{class:'text-button',disabled:pending?'disabled':undefined,onclick:async e=>{e.target.disabled=true;try{await saveEvent('continuation_requested',{});renderStudy();notify('Solicitud guardada. Retomá con tu agente para preparar la continuación.');}catch(err){e.target.disabled=false;notify(err.message);}}},pending?'Continuación pendiente del agente':'Preparar continuación')));
   $('main').replaceChildren(...nodes);
 }
-const nativeNotePattern=()=>/\[([^\]\n]+)\]\(#note=([A-Za-z0-9_.-]{1,100})\)/g;
+const nativeNotePattern=()=>/\[([^\]]+)\]\(#note=([A-Za-z0-9_.-]{1,100})\)/g;
 function visibleReadingText(text) { return (text||'').replace(nativeNotePattern(),'$1'); }
 function nativeNoteAnchor(target){
   const anchor=target.closest?.('a[href]');if(!anchor)return null;
@@ -239,11 +269,11 @@ function highlight(node,text,annotations) {
     const parent=link?E('a',{href:'#note='+link.id}):node;
     if(link)node.append(parent);
     if(!item){parent.append(document.createTextNode(value));continue;}
-    const mark=E('mark',{tabindex:0,role:'button','data-annotation-id':item.id,'data-color':highlightColor(item.data.color),'aria-label':'Resaltado: '+visibleReadingText(item.data.quote),onkeydown:e=>{if(e.key==='Enter'){e.preventDefault();mark.click();}},onclick:event=>!event.target.closest('a')&&showReadingActions(mark,{note:()=>editAnnotation(item),tutor:()=>askTutor('Ayudame a entender este fragmento:\n\n'+visibleReadingText(item.data.quote)),hasNote:!!item.data.comment,color:highlightColor(item.data.color),onColor:color=>recolorAnnotation(item,color),onDelete:()=>removeAnnotation(item)})},value);if(link){mark.removeAttribute('role');mark.removeAttribute('tabindex');mark.removeAttribute('aria-label');}parent.append(mark);
+    const mark=E('mark',{tabindex:0,role:'button','data-annotation-id':item.id,'data-color':highlightColor(item.data.color),'aria-label':'Resaltado: '+visibleReadingText(item.data.quote),onkeydown:e=>{if(e.key==='Enter'){e.preventDefault();mark.click();}},onclick:event=>!event.target.closest('a')&&showReadingActions(mark,{note:()=>editAnnotation(item),generate:()=>{noteSelection={courseId:item.courseId,lessonId:item.lessonId,version:item.data.courseVersion,blockId:item.data.blockId,quote:item.data.quote,start:item.data.start,end:item.data.end};createStudyNoteFromSelection();},tutor:()=>askTutor('Ayudame a entender este fragmento:\n\n'+visibleReadingText(item.data.quote)),hasNote:!!item.data.comment,color:highlightColor(item.data.color),onColor:color=>recolorAnnotation(item,color),onDelete:()=>removeAnnotation(item)})},value);if(link){mark.removeAttribute('role');mark.removeAttribute('tabindex');mark.removeAttribute('aria-label');}parent.append(mark);
   }
 }
 // Barra compacta anclada al fragmento y siempre dentro del viewport.
-function showReadingActions(anchor,{note,tutor,hasNote=false,color='yellow',onColor,onDelete}={}){
+function showReadingActions(anchor,{note,generate,tutor,hasNote=false,color='yellow',onColor,onDelete}={}){
   document.querySelector('.reading-highlight-actions')?.close();const rect=anchor.getBoundingClientRect();
   const dialog=E('dialog',{class:'reading-highlight-actions','aria-label':'Acciones del resaltado'});
   if(onColor){
@@ -251,8 +281,9 @@ function showReadingActions(anchor,{note,tutor,hasNote=false,color='yellow',onCo
     for(const [value,label] of HIGHLIGHT_COLORS)swatches.append(E('button',{type:'button',class:'highlight-swatch','data-color':value,'aria-label':'Color '+label,'aria-pressed':String(value===color),onclick:()=>{dialog.close();Promise.resolve().then(()=>onColor(value)).catch(error=>notify(error.message));}}));
     dialog.append(swatches);
   }
-  dialog.append(E('button',{type:'button',class:'text-button',onclick:()=>{dialog.close();Promise.resolve().then(note).catch(error=>notify(error.message));}},hasNote?'Editar nota':'Dejar una nota'),E('button',{type:'button',class:'text-button',onclick:()=>{dialog.close();Promise.resolve().then(tutor).catch(error=>notify(error.message));}},'Consultar al tutor'));
-  if(onDelete)dialog.append(E('button',{type:'button',class:'text-button danger','data-remove-highlight':'true',onclick:()=>{dialog.close();Promise.resolve().then(onDelete).catch(error=>notify(error.message));}},'Quitar resaltado'));
+  if(generate)dialog.append(iconAction('Generar nota sobre ello','note',{onclick:()=>{dialog.close();Promise.resolve().then(generate).catch(error=>notify(error.message));}}));
+  dialog.append(iconAction(hasNote?'Editar nota':'Dejar una nota','edit',{onclick:()=>{dialog.close();Promise.resolve().then(note).catch(error=>notify(error.message));}}),iconAction('Consultar al tutor','tutor',{onclick:()=>{dialog.close();Promise.resolve().then(tutor).catch(error=>notify(error.message));}}));
+  if(onDelete)dialog.append(iconAction('Quitar resaltado','trash',{class:'text-button danger','data-remove-highlight':'true',onclick:()=>{dialog.close();Promise.resolve().then(onDelete).catch(error=>notify(error.message));}}));
   const dismiss=event=>{if(!dialog.contains(event.target)&&!anchor.contains(event.target))dialog.close();};
   dialog.addEventListener('close',()=>{document.removeEventListener('pointerdown',dismiss,true);window.removeEventListener('resize',close);window.removeEventListener('scroll',close,true);dialog.remove();if(anchor.isConnected)anchor.focus({preventScroll:true});});
   const close=()=>dialog.close();document.body.append(dialog);dialog.show();const box=dialog.getBoundingClientRect();
@@ -304,12 +335,41 @@ function readingSelection(root){
   const quote=range.toString();if(!quote.trim()||quote.length>20000)return null;
   const prefix=range.cloneRange();prefix.selectNodeContents(root);prefix.setEnd(range.startContainer,range.startOffset);const start=prefix.toString().length;return {range,quote,start,end:start+quote.length};
 }
+function createStudyNoteFromSelection(){
+  if(view!=='study'||document.querySelector('dialog[open]'))return;
+  const anchor=window.getSelection()?.anchorNode,root=(anchor?.nodeType===Node.ELEMENT_NODE?anchor:anchor?.parentElement)?.closest('.theory');let chosen=readingSelection(root);
+  if(!chosen&&noteSelection?.courseId===cid&&noteSelection.lessonId===lid&&noteSelection.version===course()?.version){chosen=noteSelection;}
+  if(!chosen){notify('Seleccioná un fragmento de una lección para generar el apunte.');return;}
+  const block=lesson()?.blocks.find(b=>b.id===(root?.dataset.blockId||chosen.blockId));if(!block)return;
+  const expected={courseId:cid,lessonId:lid,version:course().version,blockId:block.id,quote:chosen.quote,start:chosen.start,end:chosen.end,context:block.text};noteSelection=null;
+  window.getSelection().removeAllRanges();window.WorkspaceKeys?.clearVisual();
+  const title=E('input',{required:'required',maxlength:160,'aria-label':'Título del apunte'});title.value=chosen.quote.trim().split(/\s+/).slice(0,8).join(' ').replace(/[.!?]+$/,'');
+  const instructions=E('textarea',{rows:3,maxlength:4000,'aria-label':'Orientación opcional',placeholder:'Opcional: ¿qué querés entender mejor?'}),output=E('div',{class:'note-tutor-output','aria-live':'polite'}),requestId=crypto.randomUUID(),noteId='study-'+requestId.replaceAll('-','');
+  const dialog=E('dialog',{class:'note-tutor-dialog'},E('form',{onsubmit:async e=>{
+    e.preventDefault();const button=e.submitter;if(button.disabled)return;button.disabled=true;
+    const currentLesson=course()?.lessons.find(x=>x.id===expected.lessonId),currentBlock=currentLesson?.blocks.find(x=>x.id===expected.blockId);
+    if(cid!==expected.courseId||lid!==expected.lessonId||course()?.version!==expected.version||!currentBlock||currentBlock.text.slice(expected.start,expected.end)!==expected.quote){output.replaceChildren(E('p',{role:'alert'},'La lección cambió; no se creó el apunte.'));button.disabled=false;return;}
+    if(tutorChannel()==='mcp'||!state.tutorConnected){output.replaceChildren(E('p',{role:'alert'},tutorChannel()==='mcp'?'La generación automática requiere el tutor conectado por API.':'Conectá el tutor en Ajustes para generar un apunte.'));button.disabled=false;return;}
+    output.replaceChildren(E('p',{role:'status'},'Preparando el apunte…'));
+    try{
+      const prompt=`Generá un apunte breve y útil para estudiar, en Markdown, sobre la selección exacta. Priorizá el contexto de la lección; no inventes fuentes ni atribuyas dominio al estudiante. Si falta información, decilo.\n\nLección: ${currentLesson.title}\nSección: ${currentBlock.title||''}\nContexto:\n${expected.context}\n\nSelección: ${expected.quote}${instructions.value.trim()?`\n\nOrientación: ${instructions.value.trim()}`:''}`;
+      const result=await tutorStream('/api/tutor',{courseId:expected.courseId,lessonId:expected.lessonId,message:prompt,contextRevision:window.TutorContext?.revision({kind:'study',courseId:expected.courseId,lessonId:expected.lessonId})},text=>output.replaceChildren(E('div',{class:'eyebrow'},'TUTOR · ESCRIBIENDO…'),tutorContent(text)));
+      const content=typeof result==='string'?result:result?.reply||result?.content||'';if(!content.trim())throw Error('El tutor no devolvió contenido; no se guardó ninguna nota.');
+      const note=await api('/api/study-note',{requestId,courseId:expected.courseId,lessonId:expected.lessonId,version:expected.version,blockId:expected.blockId,quote:expected.quote,start:expected.start,end:expected.end,title:title.value.trim()||expected.quote.slice(0,80),content});
+      const fresh=await api('/api/state');state=fresh;cid=expected.courseId;lid=expected.lessonId;render();output.replaceChildren(E('p',{role:'status'},'Nota guardada y enlazada a la selección.'),E('button',{type:'button',class:'primary',onclick:async()=>{dialog.close();await WorkspaceKeys.go('notes');await ClassNotes.select(note.id);}},'Abrir nota'));
+    }catch(error){output.replaceChildren(E('p',{role:'alert'},error.message),E('p',{class:'muted'},'Si el guardado de la nota terminó pero falló el enlace, la nota se conserva en la biblioteca; no se borra automáticamente.'));}
+    finally{button.disabled=false;}
+  }},E('div',{class:'eyebrow'},'APUNTE GENERADO · '+lesson().title),E('h2',{},'Generar apunte'),E('blockquote',{},chosen.quote),E('label',{},'Título',title),E('label',{},'Orientación opcional',instructions),E('div',{class:'dialog-actions'},E('button',{type:'button',class:'quiet',onclick:()=>dialog.close()},'Cancelar · Esc'),E('button',{type:'submit',class:'primary'},'Generar apunte')),output));
+  dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();title.focus();
+}
+window.createStudyNoteFromSelection=createStudyNoteFromSelection;
 async function captureReadingHighlight(){
   if(document.querySelector('dialog[open]'))return;
   if(view==='notes')return ClassNotes.highlightSelection();
   if(view!=='study'||document.body.classList.contains('tutor-open')||document.body.classList.contains('outline-open'))return;
   const anchor=window.getSelection()?.anchorNode,root=(anchor?.nodeType===Node.ELEMENT_NODE?anchor:anchor?.parentElement)?.closest('.theory'),chosen=readingSelection(root);if(!chosen)return;
   const block=lesson().blocks.find(b=>b.id===root.dataset.blockId);if(!block)return;const target={courseId:cid,lessonId:lid},version=course().version;
+  noteSelection={...chosen,courseId:target.courseId,lessonId:target.lessonId,version,blockId:block.id};
   const duplicate=records('annotation').some(e=>!e.data.removed&&e.data.courseVersion===version&&e.data.blockId===block.id&&e.data.start===chosen.start&&e.data.end===chosen.end);window.getSelection().removeAllRanges();window.WorkspaceKeys?.clearVisual();if(duplicate)return;
   try{await saveEvent('annotation',{blockId:block.id,quote:chosen.quote,start:chosen.start,end:chosen.end,type:'highlight',highlight:true,color:'yellow',comment:'',shareWithTutor:false},target);if(root.isConnected&&cid===target.courseId&&lid===target.lessonId)highlight(root,block.text,records('annotation').filter(e=>e.data.courseVersion===version&&e.data.blockId===block.id));}catch(error){notify(error.message);}
 }
@@ -404,8 +464,8 @@ function readableTutor(raw,record={}){
 }
 function tutorContent(raw,record={}){
   const node=E('div',{class:'tutor-answer-text'}),text=readableTutor(raw,record);
-  // Limited, safe emphasis. Model output never becomes HTML or executable markup.
-  for(const part of text.split(/(\*\*[^*\n]+\*\*)/g))node.append(part.startsWith('**')&&part.endsWith('**')?E('strong',{},part.slice(2,-2)):document.createTextNode(part));
+  if(window.NoteMarkdown)node.append(NoteMarkdown.render(text,{images:false}));
+  else node.textContent=text;
   return node;
 }
 function renderChat() {
@@ -461,8 +521,15 @@ async function askTutor(message,exerciseId=null) {
   await saveEvent('chat_message',{message,exerciseId});renderChat();
   if(!state.tutorConnected){notify('Respuesta guardada. Conectá el tutor en Ajustes, elegí el canal MCP o exportá para conversar fuera.');return;}
   busy=true;$('send-chat').disabled=true;$('send-chat').textContent='…';$('send-chat').setAttribute('aria-label','El tutor está respondiendo');
-  try{await api('/api/tutor',{courseId:targetCid,lessonId:targetLid,message,exerciseId,contextRevision:window.TutorContext?.revision({kind:'study',courseId:targetCid,lessonId:targetLid})});await reload();}
-  catch(err){notify(err.message);}
+  const live=E('div',{class:'message assistant tutor-streaming'},E('div',{class:'message-label'},'Tutor · preparando respuesta…'));
+  $('tutor-chat').append(live);$('tutor-chat').scrollTop=$('tutor-chat').scrollHeight;
+  try{await tutorStream('/api/tutor',{courseId:targetCid,lessonId:targetLid,message,exerciseId,contextRevision:window.TutorContext?.revision({kind:'study',courseId:targetCid,lessonId:targetLid})},text=>{
+    if(cid!==targetCid||lid!==targetLid||!live.isConnected)return;
+    const chat=$('tutor-chat'),follow=chat.scrollHeight-chat.scrollTop-chat.clientHeight<100;
+    live.replaceChildren(E('div',{class:'message-label'},'Tutor · escribiendo…'),tutorContent(text));
+    if(follow)chat.scrollTop=chat.scrollHeight;
+  });await reload();}
+  catch(err){live.append(E('p',{class:'muted'},'Respuesta interrumpida · no es una evaluación final.'));notify(err.message);}
   finally{busy=false;$('send-chat').disabled=false;$('send-chat').textContent='↑';$('send-chat').setAttribute('aria-label','Conversar ↗');}
 }
 function renderNotebook() {
@@ -512,24 +579,46 @@ function renderSimulation(kind) {
 let tutorProviders=[
   {id:'openrouter',name:'OpenRouter',baseUrl:'https://openrouter.ai/api/v1',defaultModel:'openrouter/free'},
   {id:'freellmapi',name:'FreeLLMAPI',baseUrl:'http://localhost:3001/v1',defaultModel:'auto'},
+  {id:'opencode',name:'OpenCode',baseUrl:'http://127.0.0.1:4096',defaultModel:'opencode/deepseek-v4.1-flash-free'},
   {id:'intern',name:'Intern Discovery',baseUrl:'https://discovery-api.intern-ai.org.cn/v1',defaultModel:''}
 ];
 function providerDetails(){return tutorProviders.find(p=>p.id===$('provider-select').value)||tutorProviders[0];}
-function providerFields(){const p=providerDetails();return {provider:p.id,providerBaseUrl:p.id==='freellmapi'?$('provider-base-url').value.trim():p.baseUrl};}
+function providerFields(){const p=providerDetails();return {provider:p.id,providerBaseUrl:['freellmapi','opencode'].includes(p.id)?$('provider-base-url').value.trim():p.baseUrl};}
+let tutorModelCatalog=[];
 function setModelOptions(models=[],selected=providerDetails().defaultModel){
-  const p=providerDetails(),options=[];
+  tutorModelCatalog=[...models];
+  const isOpenCode=providerDetails().id==='opencode',filter=$('model-provider-filter');
+  const previous=filter.value;
+  const providers=isOpenCode?[...new Set([...models.map(m=>m.id),selected].filter(id=>id&&id!=='auto'&&id.includes('/')).map(id=>id.split('/')[0]))].sort():[];
+  filter.replaceChildren(E('option',{value:''},'Todos los proveedores'),...providers.map(id=>E('option',{value:id},id)));
+  filter.value=providers.includes(previous)?previous:'';
+  $('model-provider-filter-label').hidden=!isOpenCode;
+  renderModelOptions(selected);
+}
+function renderModelOptions(selected=$('model-select').value){
+  const p=providerDetails(),options=[],filter=p.id==='opencode'?$('model-provider-filter').value:'';
+  const matches=id=>!filter||id.startsWith(filter+'/');
   if(p.id==='openrouter')options.push(E('option',{value:'openrouter/free'},'Selección automática gratuita'));
   if(p.id==='freellmapi')options.push(E('option',{value:'auto'},'Selección automática (cadena de FreeLLMAPI)'));
+  if(p.id==='opencode'&&!filter)options.push(E('option',{value:'auto'},'Modelo predeterminado de OpenCode'));
   if(p.id==='intern')options.push(E('option',{value:''},'Seleccioná o ingresá un ID de modelo'));
-  for(const m of models)if(!options.some(o=>o.value===m.id))options.push(E('option',{value:m.id},m.name));
-  if(selected&&!options.some(o=>o.value===selected))options.push(E('option',{value:selected},selected));
-  $('model-select').replaceChildren(...options);$('model-select').value=selected;
+  for(const m of tutorModelCatalog)if(matches(m.id)&&!options.some(o=>o.value===m.id))options.push(E('option',{value:m.id},m.name));
+  if(selected&&matches(selected)&&!options.some(o=>o.value===selected))options.push(E('option',{value:selected},selected));
+  $('model-select').replaceChildren(...options);
+  $('model-select').value=options.some(o=>o.value===selected)?selected:options[0]?.value||'';
 }
+$('model-provider-filter').addEventListener('change',()=>{$('custom-model').value='';renderModelOptions();});
+
 function updateProvider(model=providerDetails().defaultModel){
-  const p=providerDetails();$('provider-url-label').hidden=p.id!=='freellmapi';$('custom-model-label').hidden=p.id==='openrouter';$('custom-model').value='';
+  const p=providerDetails();$('provider-url-label').hidden=!['freellmapi','opencode'].includes(p.id);
+  $('provider-url-title').textContent=p.id==='opencode'?'URL de OpenCode local':'URL de API de FreeLLMAPI';
+  $('provider-key-title').textContent=p.id==='opencode'?'Contraseña del servidor OpenCode (si requiere autenticación)':'Clave de API';
+  $('api-key').placeholder=p.id==='opencode'?'Contraseña del servidor local':'Pegá la clave aquí, no en el chat';
+  $('custom-model-label').hidden=p.id==='openrouter';$('custom-model').value='';
   $('model-label').textContent=p.id==='openrouter'?'Modelo gratuito':'Modelo';$('load-models').textContent=p.id==='openrouter'?'Buscar modelos gratuitos':'Buscar modelos';
   $('provider-info').textContent=p.id==='openrouter'?'Solo modelos con precio cero.':p.id==='freellmapi'?'Usá la URL de tu instancia y su clave unificada. La cadena y los proveedores habilitados se configuran en FreeLLMAPI.':'Creá una clave en Intern Discovery · Token Plan. El saldo y los límites dependen de tu cuenta.';
-  $('quota-info').textContent='';setModelOptions([],model);
+  if(p.id==='opencode')$('provider-info').textContent='Usa la terminal de OpenCode con una sesión temporal por consulta. DeepSeek V4.1 Flash Free fue comprobado; auto usa el modelo predeterminado de OpenCode. Los costos dependen del proveedor conectado.';
+  $('quota-info').textContent='';$('model-provider-filter').value='';setModelOptions([],model);
 }
 async function connectProviderKey(fields){
   const key=$('api-key').value.trim();if(!key)return;
@@ -555,8 +644,8 @@ function annotationActions(item){
   if(pending){
     for(const [value,label] of HIGHLIGHT_COLORS)actions.push(E('button',{class:'text-button highlight-swatch','data-color':value,'aria-label':'Color '+label,'aria-pressed':String(highlightColor(item.data.color)===value),onclick:()=>recolorAnnotation(item,value)}));
   }
-  actions.push(E('button',{class:'text-button',onclick:()=>editAnnotation(item)},'Editar'));
-  actions.push(E('button',{class:'text-button'+(pending?' danger':''),onclick:()=>pending?removeAnnotation(item):deleteAnnotation(item)},pending?'Quitar resaltado':'Borrar'));
+  actions.push(iconAction('Editar','edit',{onclick:()=>editAnnotation(item)}));
+  actions.push(iconAction(pending?'Quitar resaltado':'Borrar','trash',{class:'text-button danger',onclick:()=>pending?removeAnnotation(item):deleteAnnotation(item)}));
   return E('span',{class:'annotation-actions'},...actions);
 }
 function editAnnotation(item){editingAnnotation=item;selection=null;$('selected-quote').textContent=visibleReadingText(item.data.quote);$('annotation-comment').value=item.data.comment||'';$('annotation-type').value=item.data.type==='highlight'?'personal':item.data.type||'doubt';$('annotation-share').checked=item.data.shareWithTutor!==false;$('annotation-dialog').showModal();$('annotation-comment').focus();}

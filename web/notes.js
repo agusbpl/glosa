@@ -39,7 +39,7 @@ window.ClassNotes=(()=>{
         output.replaceChildren(E('div',{class:'eyebrow'},'MCP EXTERNO · CONSULTA PENDIENTE'),E('p',{class:'note-tutor-question'},pending.message),E('p',{class:'muted'},'Un cliente con el MCP de tutor puede responderla. Usá «Actualizar conversación» cuando lo haya hecho.'));
         return;
       }
-      const result=await api('/api/note-tutor',{...context,noteRevision:note.revision,requestId:crypto.randomUUID(),message,contextRevision:window.TutorContext?.revision({kind:'note',noteId:context.noteId})});
+      const result=await tutorStream('/api/note-tutor',{...context,noteRevision:note.revision,requestId:crypto.randomUUID(),message,contextRevision:window.TutorContext?.revision({kind:'note',noteId:context.noteId})},text=>{output.replaceChildren(E('div',{class:'eyebrow'},'TUTOR · ESCRIBIENDO…'),tutorContent(text));});
       data().noteTutor??=[];if(!data().noteTutor.some(q=>q.id===result.id))data().noteTutor.push(result);
       output.replaceChildren(E('div',{class:'eyebrow'},'TUTOR · '+(result.context.documentTitle?result.context.documentTitle+' · PDF '+result.context.page:'APUNTE GENERAL')),E('p',{class:'note-tutor-question'},result.message),tutorContent(result.reply),result.truncated?E('p',{class:'muted'},'La respuesta llegó incompleta. Podés pedirle que continúe.'):null,result.tutorContext&&window.TutorContext?TutorContext.used(result.tutorContext):null);
     }catch(error){
@@ -323,7 +323,7 @@ window.ClassNotes=(()=>{
     list.replaceChildren(...notes.map(n=>{
       const actions=E('details',{class:'note-list-actions'},E('summary',{'aria-label':'Gestionar '+n.title},'⋯'));
       actions.open=opened.has(n.id);
-      const action=(label,run)=>E('button',{type:'button',class:'text-button',onclick:()=>{actions.open=false;Promise.resolve().then(run).catch(error=>notify(error.message));}},label);
+      const action=(label,run)=>iconAction(label,({'Renombrar':'edit','Mover de carpeta':'folder','Descargar Markdown':'download','Eliminar':'trash'})[label],{onclick:()=>{actions.open=false;Promise.resolve().then(run).catch(error=>notify(error.message));}});
       actions.append(E('div',{class:'note-list-actions-menu'},action('Renombrar',()=>rename(n.id)),action('Mover de carpeta',()=>manage(n.id,'folder')),action('Descargar Markdown',()=>exportNote(n.id)),action('Eliminar',()=>deleteNote(n.id))));
       return E('div',{class:'class-note-row','data-note-id':n.id},E('button',{class:'class-note-link'+(n.id===currentId?' active':''),onclick:()=>select(n.id).catch(e=>notify(e.message)),'aria-current':n.id===currentId?'page':'false'},E('span',{},n.title),E('small',{},n.folder||'Sin carpeta')),actions);
     }));

@@ -33,6 +33,8 @@ La apariencia se elige en Ajustes: tema claro, oscuro o automático, y un color 
 
 El tutor es opcional. Al usarlo, el contexto elegido se envía al proveedor configurado. Las credenciales permanecen en la instalación local de la PC, fuera de los respaldos de bóvedas. Las condiciones y costos dependen del proveedor. El tutor trabaja con modos **Flexible**, **Estricto** y **Extremo**: en automático la política local decide con fechas y evidencia reales y nunca debilita la puerta de evidencia ni declara dominio con una ayuda propia. En Plan, la pestaña **Parciales** muestra el plan global de todas las materias del Margen con prioridad explicada. Leé [privacidad](docs/privacidad.md) y [modos del tutor](docs/modos-tutor.md).
 
+También podés usar [OpenCode v2 como backend local del tutor](docs/opencode.md), con sus modelos y credenciales configurados, desde Ajustes.
+
 Hay dos integraciones MCP separadas y opcionales: el [tutor de apuntes](docs/mcp-tutor.md), que responde preguntas sobre notas compartidas, y la [autoría de cursos y lecciones](docs/mcp-autor.md), que ayuda a preparar materiales. Ninguna acredita dominio por sí sola ni reemplaza la revisión humana.
 
 Para preparar una materia, decile a tu agente: **«Usá el MCP de autoría para crear

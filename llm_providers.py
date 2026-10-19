@@ -5,11 +5,31 @@ from pathlib import Path
 import tempfile
 from urllib.parse import urlsplit
 
+def opencode_service():
+    """Read local service discovery only; never export its password."""
+    state = Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state')))
+    try:
+        data = json.loads((state / 'opencode/service.json').read_text(encoding='utf-8'))
+        url = data['url'].rstrip('/')
+        parts = urlsplit(url)
+        if (parts.scheme != 'http' or parts.hostname not in ('127.0.0.1', 'localhost', '::1')
+                or not parts.port or parts.username or parts.password or parts.query or parts.fragment
+                or parts.path or any(ch.isspace() for ch in url)):
+            return None
+        if not isinstance(data.get('password'), str):
+            return None
+        return {'url': url, 'password': data['password']}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
 PROVIDERS = {
     'openrouter': {'name': 'OpenRouter', 'baseUrl': 'https://openrouter.ai/api/v1',
                    'defaultModel': 'openrouter/free', 'url': 'https://openrouter.ai/settings/keys'},
     'freellmapi': {'name': 'FreeLLMAPI', 'baseUrl': os.environ.get('FREELLMAPI_BASE_URL', 'http://localhost:3001/v1').rstrip('/'),
                    'defaultModel': 'auto', 'url': 'https://freellmapi.co/'},
+    'opencode': {'name': 'OpenCode', 'baseUrl': (opencode_service() or {}).get('url', 'http://127.0.0.1:4096'),
+                 'defaultModel': 'opencode/deepseek-v4.1-flash-free', 'url': 'https://opencode.ai/v2/docs/'},
     'intern': {'name': 'Intern Discovery', 'baseUrl': 'https://discovery-api.intern-ai.org.cn/v1',
                'defaultModel': '', 'url': 'https://discovery.intern-ai.org.cn/token-plan/home'},
 }
@@ -32,8 +52,10 @@ def configuration(settings):
             or parts.password is not None or parts.query or parts.fragment
             or any(ch.isspace() or ord(ch) < 32 for ch in base)):
         raise ValueError('Usá una URL HTTP(S) sin credenciales, parámetros ni fragmentos.')
-    if provider != 'freellmapi' and base != PROVIDERS[provider]['baseUrl']:
+    if provider not in ('freellmapi', 'opencode') and base != PROVIDERS[provider]['baseUrl']:
         raise ValueError('La URL de este proveedor es fija.')
+    if provider == 'opencode' and parts.hostname not in ('127.0.0.1', 'localhost', '::1'):
+        raise ValueError('OpenCode debe servirse desde loopback (localhost, 127.0.0.1 o ::1).')
     return provider, base
 
 
@@ -47,6 +69,8 @@ def validate_settings(settings):
         raise ValueError('Seleccioná un modelo gratuito de OpenRouter.')
     if provider == 'freellmapi' and not model:
         raise ValueError('Seleccioná un modelo o usá auto en FreeLLMAPI.')
+    if provider == 'opencode' and (not model or (model != 'auto' and ('/' not in model or not all(model.split('/', 1))))):
+        raise ValueError('Usá auto o un modelo proveedor/modelo de OpenCode.')
     return {'provider': provider, 'providerBaseUrl': base, 'model': model}
 
 

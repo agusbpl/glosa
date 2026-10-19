@@ -55,7 +55,7 @@
 .theory::selection,.theory ::selection{background:var(--mark-yellow)}
 .textLayer ::selection{background:#f7dc6180;color:transparent}
 /* Barra compacta: ancho del contenido, anclada y siempre dentro del viewport. */
-.reading-highlight-actions{position:fixed;margin:0;padding:6px 8px;width:auto;max-width:min(560px,calc(100vw - 16px));border:1px solid var(--line);border-radius:8px;background:var(--paper,var(--bg));color:var(--ink);box-shadow:0 6px 24px #00000026;z-index:100}
+.reading-highlight-actions{position:fixed;margin:0;padding:6px 8px;inset:auto;width:max-content;max-width:min(560px,calc(100vw - 16px));border:1px solid var(--line);border-radius:8px;background:var(--paper,var(--bg));color:var(--ink);box-shadow:0 6px 24px #00000026;z-index:100}
 .reading-highlight-actions[open]{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .silent-ui .reading-highlight-actions button{font-size:12px;white-space:nowrap}
 .highlight-colors{display:inline-flex;align-items:center;gap:4px;padding-right:6px;margin-right:2px;border-right:1px solid var(--line)}
@@ -131,3 +131,12 @@ html[data-theme=dark] body .reading-highlight-actions .danger{color:#f0a79b}
 .leader-cheatsheet p{margin:12px 0 0;font-size:11px;color:var(--muted)}
 .global-focus .leader-cheatsheet{display:none}
 @media(max-width:700px){.leader-cheatsheet{bottom:24px;padding:14px}.leader-cheatsheet-keys{grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 10px}}
+
+/* Controles discretos, disponibles también con teclado y pantallas táctiles. */
+.icon-action{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:6px;border-radius:5px;flex-shrink:0}
+.icon-action:hover{background:var(--pale)}
+.annotation-actions{align-items:center;gap:6px}
+@media (hover:hover) and (pointer:fine){
+  .note-inline .annotation-actions{opacity:0;pointer-events:none}
+  .note-inline:hover .annotation-actions,.note-inline:focus-within .annotation-actions{opacity:1;pointer-events:auto}
+}

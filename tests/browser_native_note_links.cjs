@@ -39,10 +39,13 @@ const fs=require('fs'),os=require('os'),path=require('path'),net=require('net'),
     range.selectNodeContents(root);getSelection().removeAllRanges();getSelection().addRange(range);
     await captureReadingHighlight();
   });
-  assert.equal(await page.locator('.theory').first().innerText(),'Consultá SI.');
-  assert.equal(await page.locator('.theory').first().textContent(),text);
-  assert(await page.locator('.theory mark').count()>0);
-  await page.reload();await link.waitFor();
+   assert.equal(await page.locator('.theory').first().innerText(),'Consultá SI.');
+   assert.equal(await page.locator('.theory').first().textContent(),text);
+   assert(await page.locator('.theory mark').count()>0);
+   await page.locator('.theory mark').first().click();
+   assert.equal(await page.getByRole('button',{name:'Generar nota sobre ello',exact:true}).count(),1);
+   await page.keyboard.press('Escape');
+   await page.reload();await link.waitFor();
   await page.evaluate(async()=>{
     const label=document.querySelector('.theory a'),walker=document.createTreeWalker(label,NodeFilter.SHOW_TEXT);walker.nextNode();
     const range=document.createRange();range.setStart(walker.currentNode,0);range.setEnd(walker.currentNode,1);

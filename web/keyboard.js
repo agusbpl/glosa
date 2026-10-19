@@ -133,7 +133,7 @@ window.WorkspaceKeys=(()=>{
   }
   function annotate(){if(view==='notes')ClassNotes.annotate(true);else if(view==='study')openStudyAnnotation();}
   function commands(){return [
-    ['Abrir Margen','g o',()=>GlosaRoom.open()],['Contexto y evidencia de la última respuesta','',showTutorDetails],['Feedback de la lección','',()=>document.getElementById('feedback-dialog').showModal()],['Primer trazo · Tutorial','',()=>GlosaRoom.activate('primer-trazo')],
+     ['Abrir Margen','g o',()=>GlosaRoom.open()],['Contexto y evidencia de la última respuesta','',showTutorDetails],['Feedback de la lección','',()=>document.getElementById('feedback-dialog').showModal()],['Primer trazo · Tutorial','',()=>GlosaRoom.activate('primer-trazo')],
     ['Cambiar de modo','g m',()=>document.getElementById('workspace-mode-button').click()],['Estudiar','g e',()=>go('study')],['Notas de clase y lectura','g n',()=>go('notes')],['Cuaderno de dudas','g c',()=>go('notebook')],['Mi plan','g p',()=>go('plan')],
     ['Iniciar / pausar sesión de estudio','',toggleStudySession],['Perfil de teclado','',()=>{showSettings();document.getElementById('global-keyboard-profile').focus();}],
     ['Alternar foco','z',toggleFocus],['Ajustes globales','g a',showSettings],['Exportar historial','',()=>document.getElementById('export-dialog').showModal()],

@@ -65,3 +65,27 @@ def unpack_reply(raw, *, structured=False):
     if structured or not clean or looks_internal(clean):
         return INCOMPLETE_REPLY, None, True
     return clean, None, False
+
+
+def preview_reply(raw, *, structured=False):
+    """Project only a reply string from partial JSON; never stream assessment fields."""
+    clean = visible_text(raw)
+    envelope = re.search(r'\{\s*"reply"\s*:\s*', clean)
+    if envelope:
+        tail = clean[envelope.end():]
+        for trim in range(7):
+            fragment = tail if trim == 0 else tail[:-trim]
+            try:
+                text, _ = json.JSONDecoder().raw_decode(fragment)
+            except ValueError:
+                try:
+                    text = json.loads(fragment + '"')
+                except ValueError:
+                    continue
+            if isinstance(text, str):
+                text = visible_text(text)
+                return '' if looks_internal(text) else text
+        return ''
+    if structured or clean.startswith(('{', '[', '```')) or looks_internal(clean):
+        return ''
+    return clean

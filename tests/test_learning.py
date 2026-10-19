@@ -12,7 +12,7 @@ import threading
 import unittest
 from unittest.mock import patch
 from urllib.request import Request, urlopen
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import server
@@ -167,7 +167,7 @@ class LearningTests(unittest.TestCase):
     def test_provider_credentials_are_separate_and_never_exported(self):
         with patch.object(server,'KEY',''), patch.dict(server.PROVIDER_KEYS,{},clear=True):
             providers=self.get('/api/providers')['providers']
-            self.assertEqual({p['id'] for p in providers},{'openrouter','freellmapi','intern'})
+            self.assertEqual({p['id'] for p in providers},{'openrouter','freellmapi','intern','opencode'})
             for provider,model in (('openrouter','openrouter/free'),('freellmapi','auto'),('intern','model-from-panel')):
                 self.post('/api/settings',{**server.BASE_SETTINGS,'provider':provider,'model':model})
                 self.assertFalse(self.get('/api/state')['tutorConnected'])
@@ -263,6 +263,125 @@ print(json.dumps([
                             self.assertNotIn('provider',body)
                             self.assertNotIn('plugins',body)
                             self.assertIn('español',body['messages'][0]['content'])
+
+    def test_opencode_stopped_service_is_started_and_retried_once(self):
+        settings={'provider':'opencode','providerBaseUrl':'http://localhost:49374'}
+        runtime={'url':'http://localhost:49374','password':'runtime-secret'}
+        refused=URLError(ConnectionRefusedError(111,'Connection refused'))
+        with patch.object(server.llm_providers,'opencode_service',return_value=runtime), patch.object(server.opencode_backend,'start_service') as start, patch.object(server.request,'build_opener') as opener:
+            opener.return_value.open.side_effect=[refused,io.BytesIO(b'{"data":[]}')]
+            self.assertEqual(server.provider_models(settings),[])
+            start.assert_called_once()
+            self.assertEqual(opener.return_value.open.call_count,2)
+            opener.return_value.open.reset_mock()
+            opener.return_value.open.side_effect=refused
+            start.reset_mock()
+            with self.assertRaisesRegex(ValueError,'opencode service start'):
+                server.provider_models(settings)
+            self.assertEqual(opener.return_value.open.call_count,2)
+            start.assert_called_once()
+            start.reset_mock()
+            with self.assertRaises(ValueError):
+                server.provider_request(settings,'api/session/ses_test',method='DELETE')
+            start.assert_not_called()
+        with patch.object(server.llm_providers,'opencode_service',return_value=runtime), patch.object(server.opencode_backend,'start_service') as start, patch.object(server.request,'build_opener') as opener:
+            opener.return_value.open.side_effect=refused
+            with self.assertRaises(ValueError):
+                server.provider_models({**settings,'providerBaseUrl':'http://localhost:12345'})
+            start.assert_not_called()
+
+    def test_opencode_v2_catalog_and_both_tutors_without_api_key(self):
+        self.post('/api/settings', {**server.BASE_SETTINGS, 'provider':'opencode', 'model':'lab/model/path'})
+        captured, prompts = [], []
+        def transport(req, timeout):
+            captured.append(req)
+            if req.full_url.endswith('/api/model'):
+                data={'data':[{'providerID':'lab','id':'model/path','name':'Modelo local','enabled':True},
+                              {'providerID':'lab','id':'disabled','enabled':False}]}
+            elif req.full_url.endswith('/api/session'):
+                data={'data':{'id':'ses_glosa_test'}}
+            else:
+                data={'data':{'model':{'providerID':'lab','id':'model/path'}}}
+            return io.BytesIO(json.dumps(data).encode())
+        def cli(args, **kwargs):
+            prompts.append(Path(args[args.index('--file')+1]).read_text())
+            self.assertNotIn('-c',args)
+            self.assertNotIn('--auto',args)
+            return subprocess.CompletedProcess(args,0,json.dumps({'type':'text','part':{'text':'Una explicación breve.'}}),'')
+        with patch.dict(server.PROVIDER_KEYS, {}, clear=True), patch.object(server.llm_providers,'opencode_service',return_value=None), patch.object(server.request,'build_opener') as opener, patch.object(server.opencode_backend.subprocess,'run',side_effect=cli), patch.dict(os.environ, {'OPENCODE_BIN':'opencode-test'}):
+            opener.return_value.open.side_effect=transport
+            self.assertTrue(self.get('/api/state')['tutorConnected'])
+            self.assertEqual(self.get('/api/models')['models'], [{'id':'lab/model/path','name':'lab · Modelo local'}])
+            study=self.post('/api/tutor',{'courseId':self.cid,'lessonId':self.lid,'message':'Mi duda'})
+            note=self.note()
+            reading=self.post('/api/note-tutor',self.note_question(note,requestId='opencode-query'))
+        for result in (study, reading):
+            self.assertEqual(result['tutorContext']['provider'], 'opencode')
+        self.assertEqual(len(prompts),2)
+        for prompt in prompts:
+            self.assertIn('español',prompt)
+            self.assertIn('studentMessage',prompt)
+        creates=[r for r in captured if r.full_url.endswith('/api/session')]
+        self.assertEqual(len(creates),2)
+        for req in creates:
+            body=json.loads(req.data)
+            self.assertEqual(body['model'], {'providerID':'lab','id':'model/path'})
+            self.assertEqual(body['permissions'],[{'action':'*','resource':'*','effect':'ask'}])
+            self.assertFalse(Path(body['location']['directory']).exists())
+        self.assertEqual(sum(r.get_method()=='DELETE' for r in captured),2)
+        self.assertEqual(study['status'],'pending')
+
+    def test_opencode_discovers_local_service_without_exposing_password(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {'XDG_STATE_HOME':temporary}):
+            runtime=Path(temporary)/'opencode/service.json'
+            runtime.parent.mkdir()
+            url='http://127.0.0.1:49374'
+            runtime.write_text(json.dumps({'url':url,'password':'discovered-secret'}))
+            self.assertEqual(server.llm_providers.opencode_service(), {'url':url,'password':'discovered-secret'})
+            with patch.dict(server.PROVIDER_KEYS,{},clear=True),patch.object(server.request,'build_opener') as opener:
+                opener.return_value.open.return_value=io.BytesIO(b'{"data":[]}')
+                server.provider_models({'provider':'opencode','providerBaseUrl':url})
+                req=opener.return_value.open.call_args.args[0]
+                self.assertEqual(req.get_header('Authorization'),'Basic '+base64.b64encode(b'opencode:discovered-secret').decode())
+                opener.return_value.open.return_value=io.BytesIO(b'{"data":[]}')
+                server.provider_models({'provider':'opencode','providerBaseUrl':'http://localhost:49999'})
+                self.assertIsNone(opener.return_value.open.call_args.args[0].get_header('Authorization'))
+            self.assertNotIn('discovered-secret',json.dumps(self.get('/api/providers')))
+            for invalid in ('https://example.com:1234','http://user:pass@127.0.0.1:1234','http://localhost:1234/path'):
+                runtime.write_text(json.dumps({'url':invalid,'password':'discovered-secret'}))
+                self.assertIsNone(server.llm_providers.opencode_service())
+
+    def test_opencode_free_tier_rejection_is_not_reported_as_offline(self):
+        detail={"service":"opencode","message":"OpenCode's free tier can only be used from within OpenCode. Download it at https://opencode.ai and keep building."}
+        failure=HTTPError('http://localhost/api/experimental/generate',503,'Unavailable',{},
+                          io.BytesIO(json.dumps(detail).encode()))
+        with patch.object(server.request,'build_opener') as opener:
+            opener.return_value.open.side_effect=failure
+            with self.assertRaisesRegex(ValueError, 'su nivel gratuito sólo puede usarse dentro de OpenCode'):
+                server.provider_request({'provider':'opencode'}, 'api/experimental/generate', {'prompt':'diagnóstico'})
+
+    def test_opencode_unavailable_upstream_has_actionable_error(self):
+        failure=HTTPError('http://localhost/api/experimental/generate',503,'Unavailable',{},
+                          io.BytesIO(b'{"service":"freellmapi","message":"ConnectionRefused"}'))
+        with patch.object(server.request,'build_opener') as opener:
+            opener.return_value.open.side_effect=failure
+            with self.assertRaisesRegex(ValueError, 'OpenCode está activo, pero su proveedor freellmapi'):
+                server.provider_request({'provider':'opencode'}, 'api/experimental/generate', {'prompt':'diagnóstico'})
+
+    def test_opencode_auth_auto_and_bad_responses(self):
+        settings={'provider':'opencode','model':'auto'}
+        base=server.llm_providers.PROVIDERS['opencode']['baseUrl']
+        with patch.dict(server.PROVIDER_KEYS, {('opencode',base):'server-password'},clear=True), patch.object(server.request,'build_opener') as opener, patch.dict(os.environ, {'OPENCODE_SERVER_USERNAME':'opencode'}):
+            opener.return_value.open.return_value=io.BytesIO(b'{"data":[]}')
+            server.provider_models(settings)
+            req=opener.return_value.open.call_args.args[0]
+            self.assertEqual(req.get_header('Authorization'),'Basic '+base64.b64encode(b'opencode:server-password').decode())
+        for url in ('https://example.com','http://127.0.0.1:4096?token=x','http://user:pass@localhost:4096'):
+            with self.assertRaises(ValueError):
+                server.llm_providers.configuration({**settings,'providerBaseUrl':url})
+        for model in ('', 'missing-provider', '/model', 'provider/'):
+            with self.assertRaises(ValueError):
+                server.llm_providers.validate_settings({**settings,'model':model})
 
     def test_provider_configuration_rejects_invalid_or_credential_urls(self):
         for fields in ({'provider':'missing'}, {'provider':'intern','providerBaseUrl':'https://elsewhere.example/v1'},

@@ -21,7 +21,7 @@ server.ThreadingHTTPServer(('127.0.0.1',server.PORT),server.Handler).serve_forev
   const annotationId=(await snapshot()).events.find(e=>e.kind==='annotation').id;
   await page.locator('.theory mark').first().click();await page.locator('.reading-highlight-actions').waitFor({state:'visible'});
   const bar=await page.locator('.reading-highlight-actions').evaluate(el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,vw:innerWidth,vh:innerHeight}});
-  assert(bar.width<=Math.min(560,bar.vw-16)+1,`action bar must stay compact, got ${bar.width}`);
+  assert(bar.width<=Math.min(300,bar.vw-16)+1,`action bar must stay compact, got ${bar.width}`);
   assert(bar.left>=0&&bar.right<=bar.vw&&bar.top>=0&&bar.bottom<=bar.vh,'action bar must stay inside the viewport');
 
   // 2. Changing color persists and keeps the revision history.

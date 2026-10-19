@@ -11,10 +11,10 @@ window.NoteMarkdown=(()=>{
     }
     return fragment;
   }
-  function render(tokens){
+  function render(tokens,options={}){
     const fragment=document.createDocumentFragment();
     for(const token of tokens||[]){
-      const children=()=>render(token.tokens);
+      const children=()=>render(token.tokens,options);
       let node;
       switch(token.type){
         case 'space':continue;
@@ -33,7 +33,7 @@ window.NoteMarkdown=(()=>{
           const href=safeUrl(token.href);node=href?E('a',{href,title:token.title||'',rel:'noopener noreferrer'},children()):children();break;
         }
         case 'image':{
-          const src=safeUrl(token.href);node=src&&/^https?:/.test(src)?E('img',{src,alt:token.text,title:token.title||'',loading:'lazy'}):text(token.text);break;
+          const src=safeUrl(token.href);node=options.images!==false&&src&&/^https?:/.test(src)?E('img',{src,alt:token.text,title:token.title||'',loading:'lazy'}):text(token.text);break;
         }
         case 'list':
           node=E(token.ordered?'ol':'ul',token.ordered?{start:token.start}:{});
@@ -53,5 +53,5 @@ window.NoteMarkdown=(()=>{
     }
     return fragment;
   }
-  return {render:value=>render(marked.lexer(value,{gfm:true,breaks:true}))};
+  return {render:(value,options={})=>render(marked.lexer(value,{gfm:true,breaks:true}),options)};
 })();
