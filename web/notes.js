@@ -15,7 +15,7 @@ window.ClassNotes=(()=>{
   function renderTutorHistory(){
     const target=document.getElementById('note-tutor-history');if(!target||!current)return;
     const records=conversations().filter(q=>q.noteId===current.id);
-    target.replaceChildren();if(records.length)target.append(E('details',{},E('summary',{},'Consultas del apunte · '+records.length),...records.map(conversationItem)));
+    target.replaceChildren();if(records.length)target.append(E('details',{},E('summary',{},'Consultas del apunte · '+records.length),...records.map(conversationItem)));target.closest('.note-records')?.toggleAttribute('hidden',records.length===0);
   }
   function showRecords(kind){
     const target=document.getElementById(kind==='history'?'note-tutor-history':'note-anchors');if(!target)return;
@@ -69,8 +69,12 @@ window.ClassNotes=(()=>{
   const continuous=()=>writingScope()==='page';
   function activeWritingInput(){const focused=VimEditors.sourceFor(document.activeElement);if(focused?.matches('#class-note-content,.note-cell-content')||focused?.closest('.note-preface'))return focused;return continuous()?document.querySelector(`.note-page-cell[data-page="${current.page||1}"] .note-cell-content`)||document.getElementById('class-note-content'):liveEditor?.element||document.getElementById('class-note-content');}
   function showMarkdown(){
-    liveEditor?.setText(writingText());prefaceEditor?.setText(generalText());
+    const body=editorBody(writingText()),preface=editorBody(generalText());if(liveEditor&&liveEditor.text()!==body)liveEditor.setText(body);if(prefaceEditor&&prefaceEditor.text()!==preface)prefaceEditor.setText(preface);
   }
+  function editorBody(text){
+    return String(text||'').replace(/^ {0,3}#[ \t]+[^\n]*(?:\n{1,2}|$)/,'');
+  }
+  function markdownWithTitle(text){return '# '+(current.title||'Apunte sin título')+'\n\n'+String(text||'').replace(/^\n+/, '');}
   function reading(read){
     const preview=document.getElementById('note-markdown-preview'),input=document.getElementById('class-note-content');if(!preview||!input)return;
     if(read)showMarkdown();preview.hidden=!read;input.hidden=read;
@@ -78,10 +82,10 @@ window.ClassNotes=(()=>{
   function edit(){
     const input=activeWritingInput();if(!input)return null;
     const raw=input.closest('.note-raw-editor');if(raw)raw.hidden=false;
-    if(!continuous()&&liveEditor){reading(true);if(current.id===pristineId){liveEditor.enterInsert();liveEditor.setSelection(2);}return liveEditor.element;}
+    if(!continuous()&&liveEditor){reading(true);if(current.id===pristineId){liveEditor.setSelection(liveEditor.text().length);liveEditor.enterInsert();}return liveEditor.element;}
     return input;
   }
-  function editMarkdown(){const input=document.getElementById('class-note-content');if(!input)return;const raw=input.closest('.note-raw-editor');if(raw)raw.hidden=false;else reading(false);input.focus();}
+  function focusBody(){const target=edit();target?.focus({preventScroll:true});if(target)VimEditors.enterInsert(target);}
   function validPage(page){const doc=data().documents.find(d=>d.id===current?.documentId);return Number.isSafeInteger(page)&&page>=1&&(!doc?.pages||page<=doc.pages);}
   function selectNotePage(page,focus=false){
     if(!current?.documentId||!validPage(page))return;
@@ -134,9 +138,55 @@ window.ClassNotes=(()=>{
   }
   const generalText=()=>current?.contentFormat==='markdown'?current.content:current?'# '+current.title+'\n\n'+current.content:'';
   function writingText(){return current?.markdownDraft?.documentId===current?.documentId?normalizeHeaders(current.markdownDraft.text):continuous()?pageMarkdown():generalText();}
+  function pdfIcon(){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'18',height:'18',fill:'none',stroke:'currentColor','stroke-width':'1.7','aria-hidden':'true'}))svg.setAttribute(key,value);const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d','M8 12.5 14.7 5.8a3.2 3.2 0 0 1 4.5 4.5l-8.8 8.8a5 5 0 0 1-7.1-7.1l8.5-8.5');svg.append(path);return svg;}
   function setTitle(title,note=current){
     note.title=title;
     if(note.contentFormat==='markdown')note.content=/^ {0,3}#(?:[ \t]|$)/.test(note.content)?note.content.replace(/^[^\n]*/,'# '+title):'# '+title+'\n\n'+note.content;
+  }
+  function installSlashMenu(host){
+    let menu=null,active=0,target=null;
+    const close=restore=>{if(!menu)return;const old=menu,focusTarget=target;menu=null;target=null;old.remove();if(restore&&focusTarget?.isConnected){focusTarget.focus();VimEditors.enterInsert(focusTarget);}};
+    const open=()=>{
+      if(menu)return;
+      const actions=[
+        ['Adjuntar PDF',()=>openPdf().catch(e=>notify(e.message))],
+        ['Preguntar al tutor',askCurrent],
+        ['Anotar',()=>annotate(false)],
+        ['Cambiar carpeta',()=>manage(current.id,'folder')],
+        [current.shared?'Dejar de compartir':'Compartir con el agente autor',()=>{current.shared=!current.shared;changes();render();document.getElementById('note-title-input')?.focus();}],
+        ['Exportar Markdown',()=>exportNote()],
+        ['Eliminar apunte',()=>deleteNote(current.id)]
+      ];
+      menu=E('div',{class:'note-slash-menu',role:'menu','aria-label':'Acciones del apunte'});
+      actions.forEach(([label,run],index)=>menu.append(E('button',{type:'button',role:'menuitem',tabindex:index===0?'0':'-1',onclick:()=>{close(false);run();}},label)));
+      menu.addEventListener('keydown',e=>{
+        const buttons=[...menu.querySelectorAll('button')];
+        if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close(true);return;}
+        if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();e.stopPropagation();active=(active+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length;buttons.forEach((b,i)=>b.tabIndex=i===active?0:-1);buttons[active].focus();}
+        if(e.key==='Enter'){e.preventDefault();e.stopPropagation();buttons[active]?.click();}
+      });
+      menu.addEventListener('focusout',e=>{if(menu&&!menu.contains(e.relatedTarget))close(false);});
+      const hostBox=host.getBoundingClientRect(),inputBox=target.getBoundingClientRect();host.append(menu);menu.style.top=Math.max(8,inputBox.bottom-hostBox.top+4)+'px';menu.style.left=Math.max(8,Math.min(hostBox.width-280,inputBox.left-hostBox.left))+'px';active=0;menu.querySelector('button')?.focus();
+    };
+    host.addEventListener('keydown',e=>{
+      if(e.key!=='/')return;
+      const editor=e.target.closest?.('.cm-content'),candidate=editor||e.target;
+      if(!host.contains(candidate))return;
+      target=candidate;
+      if(candidate instanceof HTMLTextAreaElement){
+        if(candidate.selectionStart!==candidate.selectionEnd)return;
+        const start=candidate.value.lastIndexOf('\n',candidate.selectionStart-1)+1,end=candidate.value.indexOf('\n',candidate.selectionStart),line=candidate.value.slice(start,end<0?candidate.value.length:end);
+        if(line.trim())return;
+      }else{
+        const selection=window.getSelection(),anchor=selection?.anchorNode,anchorElement=anchor?.nodeType===1?anchor:anchor?.parentElement,line=anchorElement?.closest('.cm-line');
+        if(!editor||!selection||selection.rangeCount!==1||!selection.isCollapsed||!line)return;
+        const before=document.createRange(),after=document.createRange();
+        try{before.selectNodeContents(line);before.setEnd(anchor,selection.anchorOffset);after.selectNodeContents(line);after.setStart(anchor,selection.anchorOffset);}catch{return;}
+        if(before.toString().trim()||after.toString().trim())return;
+      }
+      e.preventDefault();e.stopPropagation();open();
+    },true);
+    host.addEventListener('focusout',e=>{if(menu&&!menu.contains(e.relatedTarget))close(false);});
   }
   function storeGeneral(text){current.content=text;current.contentFormat='markdown';current.title=(text.split('\n')[0].match(/^ {0,3}#[ \t]+(.+?)(?:[ \t]+#+[ \t]*)?$/)?.[1]?.trim()||'Apunte sin título').slice(0,200);updateHeading();}
   function storeWriting(text){
@@ -250,8 +300,8 @@ window.ClassNotes=(()=>{
     }
     const warnings=data().noteWarnings||[];if(warnings.length)notify('Apuntes: '+warnings[0]);
   }
-  async function select(id){await flush();rememberTextNote();closeList();currentId=id;current=null;activeNote();rememberTextNote();render();document.getElementById('main').focus({preventScroll:true});}
-  async function create(){await flush();closeList();blank();render();const input=edit();input?.focus();if(liveEditor){liveEditor.setSelection(2);liveEditor.enterInsert();}else input?.setSelectionRange(2,2);}
+  async function select(id){await flush();rememberTextNote();closeList();currentId=id;current=null;activeNote();rememberTextNote();render();focusBody();}
+  async function create(options={}){await flush();closeList();blank();if(options.title)current.title=options.title;if(options.folder)current.folder=options.folder;render();const input=edit();input?.focus();if(liveEditor){liveEditor.setSelection(liveEditor.text().length);liveEditor.enterInsert();}else input?.setSelectionRange(0,0);}
   async function usePdf(doc){
     await flush();
     if(current?.documentId===doc.id)return;
@@ -273,11 +323,9 @@ window.ClassNotes=(()=>{
     dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();draw();search.focus();
   }
   async function readStep(delta){const scroll=document.getElementById('pdf-scroll');if(!scroll||!pdf)return;const edge=delta>0?scroll.scrollTop+scroll.clientHeight>=scroll.scrollHeight-3:scroll.scrollTop<=0;if(edge){const next=Math.max(1,Math.min(pdf.numPages,pageNumber+delta));if(next!==pageNumber){await flush();await loadPdf(current.documentId,next);if(delta<0)scroll.scrollTop=scroll.scrollHeight;}}else scroll.scrollBy({top:delta*100,behavior:'instant'});}
-  function updateHeading(){
-    const button=document.getElementById('note-name-button');if(!button)return;button.hidden=!current;button.textContent=current?.title||'Apunte sin título';button.setAttribute('aria-label','Renombrar apunte: '+(current?.title||'Apunte sin título'));
-  }
+  function updateHeading(){const button=document.getElementById('note-name-button');if(button)button.hidden=true;}
   const noteById=id=>current?.id===id?current:data().notes.find(n=>n.id===id);
-  function rename(id=current?.id){return manage(id,'rename');}
+  function rename(id=current?.id){if(id===current?.id){const title=document.getElementById('note-title-input');title?.focus();title?.select();return;}return manage(id,'rename');}
   function properties(id=current?.id){return manage(id,'properties');}
   async function manage(id,kind){
     await flush();const note=noteById(id);if(!note)return;
@@ -364,38 +412,35 @@ window.ClassNotes=(()=>{
     sidebar.append(search,folders,E('div',{id:'class-note-list'}),E('div',{class:'notes-nav-bottom'},E('button',{class:'text-button',onclick:()=>document.getElementById('export-dialog').showModal()},'↓ Exportar notas e historial')));
     const editor=E('section',{class:'note-editor'});
     {
-      const folderInput=E('input',{id:'class-note-folder',placeholder:'Materia / carpeta','aria-label':'Carpeta de la nota',oninput:e=>{current.folder=e.target.value;changes();}});folderInput.value=current.folder;
+      const titleInput=E('input',{id:'note-title-input',class:'note-title-input',maxlength:200,'aria-label':'Título del apunte',placeholder:'Apunte sin título',value:current.title||'',oninput:e=>{current.title=e.target.value.slice(0,200);if(current.contentFormat==='markdown'){setTitle(current.title);content.value=continuous()?pageMarkdown():current.content;}changes();}});
+      titleInput.addEventListener('keydown',e=>{if(e.key==='Tab'&&!e.shiftKey){e.preventDefault();e.stopPropagation();focusBody();}});
+      editor.addEventListener('keydown',e=>{if(e.key==='Tab'&&e.shiftKey&&(e.target.matches?.('textarea')||e.target.closest?.('.cm-content'))){e.preventDefault();e.stopPropagation();titleInput.focus();titleInput.select();}},true);
       const content=E('textarea',{id:'class-note-content',class:'note-content',placeholder:'# Tema de la clase\n\nMis apuntes…\n\n## Dudas para el agente\n- …','aria-label':'Contenido de la nota',oninput:e=>{storeWriting(e.target.value);if(!e.isComposing)scheduleCursorFollow(e.target);}});content.value=writingText();
       for(const event of ['select','keyup','click','focus','compositionend'])content.addEventListener(event,()=>scheduleCursorFollow(content));
-      const share=E('input',{type:'checkbox',onchange:e=>{current.shared=e.target.checked;changes();}});share.checked=current.shared;
-      const writingControls=E('div',{class:'note-writing-controls'},E('button',{type:'button',class:'text-button',onclick:()=>annotate(false)},'＋ Anotación'));
       let writing;
       if(continuous()){
         const raw=E('section',{class:'note-raw-editor'},content);raw.hidden=!current.markdownDraft;
         writing=E('div',{class:'note-notebook-wrapper'},notebook(),E('button',{type:'button',class:'text-button note-new-cell',onclick:newPageCell},'＋ Página · g b'),raw);
         if(current.content.trim()&&current.content.trim()!=='#'||current.contentFormat!=='markdown'&&current.title!=='Apunte sin título'){
           const preface=E('article',{class:'note-preface note-markdown note-live-markdown','aria-label':'Texto del apunte'});
-          prefaceEditor=NoteLiveMarkdown.create(preface,generalText(),text=>{storeGeneral(text);changes();if(!current.markdownDraft)content.value=pageMarkdown();});writing.prepend(preface);
+          prefaceEditor=NoteLiveMarkdown.create(preface,editorBody(generalText()),text=>{storeGeneral(markdownWithTitle(text));changes();if(!current.markdownDraft)content.value=pageMarkdown();});writing.prepend(preface);
         }
       }else{
         content.hidden=true;
         content.addEventListener('blur',e=>{if(VimEditors.sourceFor(e.relatedTarget)!==content)reading(true);});
         const preview=E('article',{id:'note-markdown-preview',class:'note-markdown note-live-markdown','aria-label':'Apunte en Markdown'});
-        liveEditor=NoteLiveMarkdown.create(preview,writingText(),text=>{content.value=text;storeWriting(text);});
-        writingControls.prepend(E('button',{type:'button',class:'text-button',onclick:()=>edit()?.focus()},'Editar'),E('button',{type:'button',class:'text-button',onclick:editMarkdown},'Editar Markdown original'));
+        preview.dataset.empty=String(editorBody(writingText()).length===0);
+        liveEditor=NoteLiveMarkdown.create(preview,editorBody(writingText()),text=>{preview.dataset.empty=String(text.length===0);content.value=markdownWithTitle(text);storeWriting(content.value);});
+        liveEditor.element.addEventListener('click',()=>liveEditor?.enterInsert());
         const body=E('div',{class:'note-markdown-editor'},preview,content);
         writing=body;
       }
-      const meta=E('div',{class:'note-meta'},folderInput,E('span',{id:'note-save-status',class:'muted'},current.id===pristineId?'Sin cambios':GlosaRoom.storage.getItem('class-note-draft:'+current.id)?'Borrador local recuperado':'Guardado en esta computadora'));
-      const source=E('div',{class:'note-source-choice'},E('button',{type:'button',class:'text-button',onclick:()=>openPdf().catch(e=>notify(e.message))},current.documentId?'Cambiar PDF':'Abrir PDF · g f'),current.documentId?E('button',{type:'button',class:'text-button',onclick:()=>closePdf().catch(e=>notify(e.message))},'Cerrar PDF'):null);
-      const ask=E('button',{type:'button',class:'text-button note-ask-button',onclick:askCurrent},'Preguntar al tutor · Ctrl+Shift+Enter');
-      const footer=E('div',{class:'note-footer'},E('label',{class:'check'},share,'Compartir apunte y consultas con el agente que crea cursos'),E('button',{class:'text-button',onclick:()=>flush().catch(e=>notify(e.message))},'Guardar'),E('button',{class:'text-button',onclick:()=>exportNote()},'↓ Markdown'));
+      const source=E('div',{class:'note-source-choice'},E('button',{type:'button',class:'text-button icon-action note-pdf-action','aria-label':current.documentId?'Cambiar PDF':'Adjuntar PDF',title:current.documentId?'Cambiar PDF':'Adjuntar PDF',onclick:()=>openPdf().catch(e=>notify(e.message))},pdfIcon()),current.documentId?E('button',{type:'button',class:'text-button',onclick:()=>closePdf().catch(e=>notify(e.message))},'Cerrar PDF'):null);
       const history=E('div',{id:'note-tutor-history'}),anchors=E('div',{id:'note-anchors',class:'note-anchors'});
       {
         editor.classList.add('minimal-note');
-        const options=E('details',{id:'note-options',class:'note-options'},E('summary',{'aria-label':'Opciones del apunte'},'⋯'),E('div',{class:'note-options-panel'},writingControls,ask,meta,source,footer,history,anchors));
-        options.addEventListener('click',e=>{if(e.target.closest('button'))options.open=false;});
-        editor.append(options,writing,E('p',{id:'note-save-error',class:'muted',role:'status',hidden:'hidden'}));
+        const titleRow=E('div',{class:'note-title-row'},titleInput,source,E('span',{id:'note-save-status',class:'note-save-indicator',role:'status'},current.id===pristineId?'Sin cambios':GlosaRoom.storage.getItem('class-note-draft:'+current.id)?'Borrador local recuperado':'Guardado en esta computadora'));
+        editor.append(titleRow,writing,E('details',{class:'note-records'},E('summary',{},'Consultas anteriores'),history),E('details',{class:'note-records'},E('summary',{},'Anotaciones'),anchors),E('p',{id:'note-save-error',class:'muted',role:'status',hidden:'hidden'}));installSlashMenu(editor);
         const fileWarnings=data().noteWarnings||[];
         if(fileWarnings.length)editor.append(E('p',{class:'muted note-file-warnings',role:'status'},'Revisá Apuntes: '+fileWarnings.join(' ')));
       }
@@ -416,7 +461,7 @@ window.ClassNotes=(()=>{
     }
     target.replaceChildren();
     if(current.documentId&&linked.length)target.append(E('p',{class:'margin-page-label'},'Anotaciones de la página '+(current.page||1)+' · a para anotar'));
-    target.append(...linked.map(item));
+    target.append(...linked.map(item));target.closest('.note-records')?.toggleAttribute('hidden',general.length+linked.length===0);
     if(general.length)target.append(E('p',{class:'margin-page-label'},'Anotaciones independientes'),...general.map(item));
     drawPdfHighlights();
   }
@@ -532,12 +577,10 @@ window.ClassNotes=(()=>{
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshFromServer();});
   window.addEventListener('focus',()=>{refreshFromServer();});
   document.addEventListener('selectionchange',()=>{const input=VimEditors.sourceFor(document.activeElement);if(input?.matches('#class-note-content,.note-cell-content'))scheduleCursorFollow(input);});
-  document.addEventListener('pointerdown',e=>{const options=document.getElementById('note-options');if(options?.open&&!options.contains(e.target))options.open=false;});
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){const options=document.getElementById('note-options');if(options?.open){options.open=false;options.querySelector('summary').focus({preventScroll:true});}}});
   window.addEventListener('resize',()=>{
     if(view==='notes'){const layout=splitLayout();if(layout){const saved=parseFloat(GlosaRoom.storage.getItem('class-note-split:'+current.id));setSplit(Number.isFinite(saved)?saved:Number(layout.dataset.readerShare),false);}}
     clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(view==='notes'&&pdf&&mode()!=='page')paint({preserveScroll:true}).catch(pdfError);},150);
   });
   window.addEventListener('beforeunload',()=>{if(current&&dirty()){remember();navigator.sendBeacon('/api/notes',new Blob([JSON.stringify(current)],{type:'application/json'}));}});
-  return {render,flush,select,current:()=>current,currentId:()=>currentId,applyStudy,refresh:refreshFromServer,create,mode,closePdf,openList,closeList,highlightSelection,annotate,askCurrent,openTutor,edit,editMarkdown,showRecords,refreshTutorHistory:renderTutorHistory,sendQuestion,input:activeWritingInput,followCursor:()=>followNoteCursor(activeWritingInput(),false),newPageCell,moveCell,contextTarget:()=>({kind:'note',...questionContext()}),openPdf,readStep,zoomBy,rename,properties,deleteNote,changePage,exportNote,upload,startResize,endResize,resizeSplit,resetSplit,leave:()=>{liveEditor?.destroy();liveEditor=null;prefaceEditor?.destroy();prefaceEditor=null;readerObserver?.disconnect();clearTimeout(resizeTimer);document.body.classList.remove('resizing-pointer');clearTimeout(cursorTimer);current=null;currentId=null;pristineId=null;baseline=null;closeList();generation++;renderTask?.cancel();document.querySelector('.workspace').classList.remove('notes-view');}};
+  return {render,flush,select,current:()=>current,currentId:()=>currentId,applyStudy,refresh:refreshFromServer,create,mode,closePdf,openList,closeList,highlightSelection,annotate,askCurrent,openTutor,edit,focusBody,showRecords,refreshTutorHistory:renderTutorHistory,sendQuestion,input:activeWritingInput,followCursor:()=>followNoteCursor(activeWritingInput(),false),newPageCell,moveCell,contextTarget:()=>({kind:'note',...questionContext()}),openPdf,readStep,zoomBy,rename,properties,deleteNote,changePage,exportNote,upload,startResize,endResize,resizeSplit,resetSplit,leave:()=>{liveEditor?.destroy();liveEditor=null;prefaceEditor?.destroy();prefaceEditor=null;readerObserver?.disconnect();clearTimeout(resizeTimer);document.body.classList.remove('resizing-pointer');clearTimeout(cursorTimer);current=null;currentId=null;pristineId=null;baseline=null;closeList();generation++;renderTask?.cancel();document.querySelector('.workspace').classList.remove('notes-view');}};
 })();

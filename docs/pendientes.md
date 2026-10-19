@@ -38,3 +38,23 @@ pliego del parcial TPG. No implementar sin volver a consultar al usuario.
 
 La revisión de skills es una fuente de propuestas, no una autorización para
 modificar los MCP ni para adoptar su flujo completo.
+
+## Interfaz móvil pendiente
+
+Implementación actual autorizada: solo escritorio. Estas observaciones quedan
+para un ciclo móvil posterior; comprobarlas en teléfonos y anchos estrechos
+antes de ajustar el comportamiento.
+
+- **Lectura y barra inferior:** en lectura, la barra fija inferior puede tapar las
+  últimas líneas. Criterio de aceptación: el final del contenido puede
+  desplazarse por encima de la barra y permanece legible, con controles
+  accesibles y sin saltos al abrir/cerrar paneles.
+- **Orden del inicio:** en móvil, “Nuevo pliego” e “Importar” aparecen antes de
+  “Continuar”. Criterio de aceptación: si hay trabajo reciente, “Continuar” se
+  encuentra antes de las acciones de creación/importación; en biblioteca vacía,
+  creación sigue siendo la acción principal.
+- **Calendario global:** explorar una agenda diaria como detalle principal en
+  móvil en lugar de depender de las celdas mensuales estrechas. Criterio de
+  aceptación: cada día permite ver y editar eventos, crear horarios y manejar
+  excepciones; el mes sigue disponible para orientarse y no hay desbordamiento
+  horizontal.

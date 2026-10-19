@@ -23,6 +23,8 @@ from tutor_output import unpack_reply, preview_reply
 import tutor_context
 import tutor_modes
 import calendar_store
+import margen_agenda
+import native_folders
 import llm_providers
 import opencode_backend
 from notebook_rules import important_notes
@@ -905,6 +907,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send({**author_pliego.browse_folders(folder),
                                   'margen':rooms.margen(DATA,create=False)['path'],
                                   'authorCommand':str(ROOT/'start-author.sh')})
+            if path=='/api/home':
+                start=parse.parse_qs(parse.urlparse(self.path).query).get('from',[None])[0]
+                return self.send(margen_agenda.snapshot(DATA, ROOT, start=start))
             if path=='/api/rooms': return self.send({'rooms': rooms.list_rooms(DATA, ROOT), 'active': active_workspace()['id'], **rooms.inventory(DATA, ROOT)})
             if path=='/api/rooms/export':
                 scope=active_workspace()
@@ -980,7 +985,7 @@ class Handler(BaseHTTPRequestHandler):
                 with file.open('rb') as stream:
                     stream.seek(start)
                     return self.send(stream.read(end-start+1),status,content_type={'.mp4':'video/mp4','.webm':'video/webm','.jpg':'image/jpeg'}[file.suffix],extra_headers=headers)
-            files={'/author-prompt.js':('web/author-prompt.js','text/javascript; charset=utf-8'),'/rooms.js':('web/rooms.js','text/javascript; charset=utf-8'),'/plan.js':('web/plan.js','text/javascript; charset=utf-8'),'/context.js':('web/context.js','text/javascript; charset=utf-8'),'/silent.css':('web/silent.css','text/css; charset=utf-8'),'/':('web/index.html','text/html; charset=utf-8'),'/keyboard.js':('web/keyboard.js','text/javascript; charset=utf-8'),'/randomize.js':('web/randomize.js','text/javascript; charset=utf-8'),'/app.js':('web/app.js','text/javascript; charset=utf-8'),'/notes.js':('web/notes.js','text/javascript; charset=utf-8'),'/style.css':('web/style.css','text/css; charset=utf-8')}
+            files={'/ui.css':('web/ui.css','text/css; charset=utf-8'),'/home.js':('web/home.js','text/javascript; charset=utf-8'),'/home.css':('web/home.css','text/css; charset=utf-8'),'/author-prompt.js':('web/author-prompt.js','text/javascript; charset=utf-8'),'/rooms.js':('web/rooms.js','text/javascript; charset=utf-8'),'/plan.js':('web/plan.js','text/javascript; charset=utf-8'),'/context.js':('web/context.js','text/javascript; charset=utf-8'),'/silent.css':('web/silent.css','text/css; charset=utf-8'),'/':('web/index.html','text/html; charset=utf-8'),'/keyboard.js':('web/keyboard.js','text/javascript; charset=utf-8'),'/randomize.js':('web/randomize.js','text/javascript; charset=utf-8'),'/app.js':('web/app.js','text/javascript; charset=utf-8'),'/notes.js':('web/notes.js','text/javascript; charset=utf-8'),'/style.css':('web/style.css','text/css; charset=utf-8')}
             files['/notes.css']=('web/notes.css','text/css; charset=utf-8')
             files['/live-markdown.js']=('web/live-markdown.js','text/javascript; charset=utf-8')
             files['/markdown.js']=('web/markdown.js','text/javascript; charset=utf-8')
@@ -1005,8 +1010,11 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < size <= (82_000_000 if path=='/api/rooms/import' else 32_000_000 if path=='/api/documents' else 8_000_000): raise ValueError('Archivo vacío o demasiado grande.')
             body=json.loads(self.rfile.read(size))
             if not isinstance(body, dict): raise ValueError('Se requiere un objeto JSON.')
+            if path=='/api/agenda': return self.send(margen_agenda.save(DATA, ROOT, body))
+            if path=='/api/margen/choose-folder': return self.send(native_folders.choose(rooms.margen(DATA,create=False)['path']))
             if path=='/api/margen': return self.send(rooms.set_margen(DATA,body.get('folder')))
             if path=='/api/rooms/create': return self.send(rooms.create(DATA,ROOT,body.get('title')))
+            if path=='/api/rooms/delete': return self.send(rooms.trash(DATA,ROOT,body.get('id')))
             if path=='/api/rooms/rename': return self.send(rooms.rename(DATA,ROOT,body.get('id'),body.get('title')))
             if path=='/api/rooms/import':
                 if 'base64' in body:

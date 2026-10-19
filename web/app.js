@@ -474,8 +474,9 @@ function renderChat() {
   const channel=tutorChannel();
   $('tutor-preview').textContent=latest?.followUp||readableTutor(latest?.reply,latest)||'Una duda también es un buen comienzo.';
   const external=records('tutor_reply').some(e=>e.data.source==='external-mcp');
-  $('tutor-status').textContent=channel==='mcp'?(external?'Canal MCP · agente externo':'Canal MCP externo'):state.tutorConnected?'Conectado · '+(tutorProviders.find(p=>p.id===(state.settings.provider||'openrouter'))?.name||'Tutor'):'Sin conectar';
-  $('chat-hint').textContent=channel==='mcp'?'Se guarda como pendiente para tu agente externo.':state.tutorConnected?'Tu mensaje queda guardado.':'Conectalo en Ajustes o elegí el canal MCP.';
+  const provider=tutorProviders.find(p=>p.id===(state.settings.provider||'openrouter'))?.name||'Tutor';
+  $('tutor-status').textContent=channel==='mcp'?(external?'MCP · agente externo':'MCP · pendiente externo'):state.tutorConnected?'API · conectado · '+provider:'API · sin conexión';
+  $('chat-hint').textContent=channel==='mcp'?'MCP externo · la consulta se guardará pendiente para tu cliente; no requiere clave.':state.tutorConnected?'API · conectado a '+provider+'; el mensaje se guarda y se envía.':'API · sin conexión: el mensaje se guardará, no se enviará. Configurá el tutor o elegí MCP.';
   const messages=records().filter(e=>['chat_message','tutor_reply'].includes(e.kind));
   const answered=new Set(records('tutor_reply').map(e=>e.id));
   if(!messages.length) $('tutor-chat').replaceChildren();
@@ -630,8 +631,9 @@ api('/api/providers').then(d=>{tutorProviders=d.providers;}).catch(()=>{});
 function showSettings() {
   const s=state.settings;$('exam-date').value=s.examDate;$('weekday-minutes').value=s.weekdayMinutes;$('weekend-minutes').value=s.weekendMinutes;$('api-key').value='';applyAppearance();
   $('provider-select').value=s.provider||'openrouter';$('provider-base-url').value=s.providerBaseUrl||providerDetails().baseUrl;updateProvider(s.model);syncTutorChannelUI();
-  $('override-list').textContent=Object.entries(s.dailyOverrides||{}).map(([d,m])=>`${d}: ${m} min`).join(' · ')||'Sin ajustes por fecha.';$('settings-dialog').showModal();
+  $('override-list').textContent=Object.entries(s.dailyOverrides||{}).map(([d,m])=>`${d}: ${m} min`).join(' · ')||'Sin ajustes por fecha.';window.GlosaHome?.mountSettings($('settings-margin-content'));$('settings-dialog').showModal();
 }
+window.GlosaSettings={open(section){showSettings();if(section==='margen')requestAnimationFrame(()=>$('settings-margin').scrollIntoView({block:'start'}));}};
 async function flushTime() {
   const elapsed=Math.min(90,Math.round((Date.now()-activeStarted)/1000));activeStarted=Date.now();
   if(!state||!studying||!clockLesson||elapsed<1||document.hidden||view!=='study')return;
@@ -702,7 +704,7 @@ $('import-button').addEventListener('click',()=>$('course-file').click());
 $('course-file').addEventListener('change',async ev=>{try{const file=ev.target.files[0];if(!file)return;if(file.size>8_000_000)throw new Error('El archivo supera 8 MB.');const data=JSON.parse(await file.text());if(data.courses&&data.events){await api('/api/restore',data);notify('Historial incorporado, sin duplicar eventos.');}else{const result=await api('/api/course',data);cid=result.id;lid=null;notify('Curso importado. Se conserva tu historial anterior.');}await reload();}catch(err){notify(err.message);}finally{ev.target.value='';}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){const seconds=Math.min(90,Math.round((Date.now()-activeStarted)/1000));if(state&&studying&&clockLesson&&view==='study'&&seconds>0){const payload={id:crypto.randomUUID(),kind:'study_time',courseId:cid,lessonId:clockLesson,data:{seconds,measurement:'Ventana visible; estimación.'}};fetch('/api/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),keepalive:true}).catch(()=>{});}}activeStarted=Date.now();});
 setInterval(()=>flushTime().catch(()=>{}),60000);
-reload().then(()=>{clockLesson=lid;activeStarted=Date.now();}).catch(err=>{$('main').replaceChildren(E('h1',{},'No se pudo abrir el pliego'),E('p',{},err.message),E('button',{class:'quiet',onclick:()=>GlosaRoom.open()},'Abrir Margen'),E('button',{class:'text-button',onclick:()=>GlosaRoom.activate('primer-trazo')},'Volver a Primer trazo'));});
+reload().then(async()=>{clockLesson=lid;activeStarted=Date.now();await GlosaHome.boot();}).catch(async err=>{$('main').replaceChildren(E('h1',{},'No se pudo abrir el pliego'),E('p',{},err.message),E('button',{class:'quiet',onclick:()=>GlosaRoom.open()},'Abrir Margen'),E('button',{class:'text-button',onclick:()=>GlosaRoom.activate('primer-trazo')},'Volver a Primer trazo'));await GlosaHome.show();});
 
 $('lesson-search').addEventListener('input',e=>{for(const b of document.querySelectorAll('.lesson-link'))b.hidden=!b.textContent.toLowerCase().includes(e.target.value.toLowerCase());});
 

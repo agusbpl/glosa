@@ -211,8 +211,8 @@ body.resizing-pointer{cursor:col-resize;user-select:none}
 @media(max-width:700px){.silent-ui .resizable-notes.with-document{display:block}.silent-ui .notes-splitter{display:none}}
 
 .silent-ui #rooms-button{color:var(--ink);padding:0;border:0;background:none;cursor:pointer}
-#rooms-dialog{width:min(550px,calc(100vw - 32px))}#room-list{display:flex;flex-direction:column;gap:12px}.room-choice{text-align:left;padding:12px 0;border-bottom:1px solid var(--line)}
-.pliego-actions{display:flex;gap:18px;flex-wrap:wrap;margin:20px 0}.pliego-create{display:flex;align-items:center;gap:12px;margin:20px 0}.pliego-create input{min-width:0;flex:1;padding:9px;border:1px solid var(--line);border-radius:5px;background:var(--paper)}#room-list{display:flex;flex-direction:column;align-items:flex-start;gap:8px}#rooms-dialog{max-height:85vh;overflow:auto}.video-frame{display:block;background:#ebe9e4}#tutor-dock[hidden]{display:none}
+
+.pliego-actions{display:flex;gap:18px;flex-wrap:wrap;margin:20px 0}.video-frame{display:block;background:#ebe9e4}#tutor-dock[hidden]{display:none}
 
 /* Apariencia: tema (claro/oscuro/automático) y color de acento elegidos en Ajustes.
    Se guardan en este navegador; valen para todos los pliegos. */
@@ -292,3 +292,27 @@ html[data-theme=dark] body .accent-swatch[data-accent=ocean]{background:#93c0d6}
 html[data-theme=dark] body .accent-swatch[data-accent=violet]{background:#bcabd6}
 html[data-theme=dark] body .accent-swatch[data-accent=amber]{background:#d9bd82}
 html[data-theme=dark] body .accent-swatch[data-accent=graphite]{background:#b9bdc3}
+#settings-dialog{max-width:min(760px,calc(100vw - 40px));height:min(88vh,900px);padding:26px 30px 0;overflow:hidden}
+#settings-dialog form{height:100%;min-height:0;display:flex;flex-direction:column}
+#settings-dialog form>.settings-section,#settings-dialog form>.appearance-options{overflow:auto;min-height:0;padding-right:8px}
+#settings-dialog form>.eyebrow,#settings-dialog form>h2{flex:none}
+#settings-dialog .settings-section{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+#settings-dialog .settings-section h3{margin:0 0 8px;font-size:15px}
+#settings-dialog .settings-actions{position:sticky;bottom:0;flex:none;background:var(--bg);border-top:1px solid var(--line);padding:12px 0 16px;margin-top:auto;z-index:2}
+#settings-dialog #settings-margin-content .home-field{margin:8px 0}
+#settings-dialog #settings-margin-content input{width:100%}
+#settings-dialog #settings-margin-content .inline-actions{margin-top:8px}
+.tutor-channel-hint{margin:0 0 8px;padding:8px 10px;border-left:2px solid var(--green);background:var(--pale);font-size:11px;line-height:1.55;color:var(--ink)}
+.command-group-label{padding:9px 12px 4px;color:var(--muted);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.keyboard-help-dialog{max-height:88vh;overflow:auto}
+.keyboard-help-section{border-top:1px solid var(--line);padding:10px 0}
+.keyboard-help-section summary{cursor:pointer;color:var(--green);font-weight:600}
+.keyboard-help-section p{margin:8px 0 4px;line-height:1.7}
+#settings-dialog .global-controls{position:static;height:auto;display:flex;flex-wrap:wrap;border:0;padding:0;margin:12px 0;gap:10px;background:none;z-index:auto}
+#settings-dialog .global-controls .keyboard-label{display:flex}
+@media(max-width:700px){#settings-dialog{width:calc(100% - 24px);max-height:88vh;padding:20px 18px 0}#settings-dialog .settings-actions{position:sticky}#settings-dialog .two-cols{grid-template-columns:1fr}}
+#settings-dialog{max-height:88vh;overflow:auto;height:auto}
+#settings-dialog form{height:auto;min-height:0;display:block}
+#settings-dialog form>.settings-section,#settings-dialog form>.appearance-options{overflow:visible;min-height:0}
+#settings-dialog .settings-actions{position:sticky;bottom:-1px}
+.calendar-more{display:block;font-size:10px;padding:3px 4px;border-radius:4px;background:var(--pale)}

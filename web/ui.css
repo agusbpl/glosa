@@ -1,0 +1,57 @@
+/* Shared interface scale. Reading prose keeps its own typography. */
+:root{
+  --ui-font:14px;
+  --ui-small:12px;
+  --ui-heading:26px;
+  --ui-title:43px;
+  --ui-brand:16px;
+  --ui-icon:18px;
+  --ui-header-height:76px;
+  --ui-control-y:9px;
+  --ui-control-x:12px;
+}
+.silent-ui .brand,.home-brand{font:var(--ui-brand) var(--serif);letter-spacing:5px}
+.silent-ui .topbar,.home-header{height:var(--ui-header-height)}
+.silent-ui h1{font-size:var(--ui-title)}
+.silent-ui .theory-section h2{font-size:var(--ui-heading)}
+.home-button{font-size:var(--ui-font);padding:var(--ui-control-y) var(--ui-control-x);gap:8px}
+.home-button svg,.home-search svg,.home-book svg{width:var(--ui-icon);height:var(--ui-icon)}
+.home-content{max-width:1360px;padding:0 40px}
+.home-title{padding:28px 0;gap:24px}
+.silent-ui .home-title h1{font:36px/1.18 var(--serif);letter-spacing:-.7px;margin:0 0 10px}
+.home-title p{font:var(--ui-font)/1.5 system-ui,sans-serif}
+.home-columns{gap:28px}
+.home-continue{min-height:136px;padding:22px 24px;margin-bottom:24px;gap:20px}
+.home-continue h2{font:var(--ui-heading)/1.25 var(--serif);margin:10px 0 6px}
+.home-continue p{font-size:var(--ui-small)}
+.home-list-heading h2,.home-agenda h2{font-size:22px}
+.home-search{padding:8px 10px;max-width:220px}
+.home-room-open{padding:16px 0;gap:16px}
+.home-book{padding:10px}
+.home-room strong{font-size:18px}
+.home-room small{font-size:var(--ui-small)}
+.home-agenda-heading{padding:16px 18px 8px}
+.home-event{padding:15px 0;margin:0 18px;width:calc(100% - 36px);gap:16px}
+.home-event-date{padding-right:14px;min-width:38px}
+.home-event-date strong{font-size:28px}
+.home-event-info>strong{font-size:18px}
+.home-event-info>small{font-size:var(--ui-small);margin-top:4px}
+.home-footer{margin-top:24px;padding:14px 0}
+.home-modal{padding:24px}
+.home-modal h2{font-size:var(--ui-heading)}
+.home-modal input,.home-modal select{padding:var(--ui-control-y) var(--ui-control-x);font-size:var(--ui-font)}
+@media(max-width:1000px){.home-content{padding:0 24px}.home-columns{gap:20px}}
+@media(max-width:700px){
+  :root{--ui-title:34px;--ui-brand:13px;--ui-heading:24px}
+  .silent-ui .topbar{height:auto}
+  .home-header{height:68px}
+  .home-content{padding:0 20px}
+  .silent-ui .home-title h1{font-size:30px}
+  .home-title{padding:24px 0}
+  .home-continue{padding:20px;gap:16px}
+  .home-list-heading h2,.home-agenda h2{font-size:22px}
+  .home-search{max-width:170px}
+  .home-modal{padding:20px}
+}
+html{scrollbar-gutter:stable}
+html:has(dialog[open]){overflow:hidden}

@@ -19,25 +19,13 @@
 .note-table-scroll{overflow:auto;margin:1em 0}
 .note-markdown table{border-collapse:collapse;width:100%;font-size:.9em}
 .note-markdown th,.note-markdown td{border-bottom:1px solid var(--line);padding:8px 12px;text-align:left}
-.silent-ui .note-markdown-editor>[hidden],.silent-ui .note-writing-controls>[hidden]{display:none}
+.silent-ui .note-markdown-editor>[hidden]{display:none}
 @media(max-width:700px){.note-markdown{font-size:18px;min-height:260px}}
 .silent-ui .minimal-note{display:block;position:relative}
 .silent-ui .minimal-note:focus,.silent-ui .minimal-note .note-markdown:focus{outline:none}
-.note-options{position:absolute;right:20px;top:48px;z-index:20}
-.note-options>summary{list-style:none;cursor:pointer;color:var(--muted);font:24px/1.2 var(--sans,sans-serif);padding:4px 8px}
-.note-options>summary::-webkit-details-marker{display:none}
-.note-options-panel{position:absolute;top:100%;right:0;z-index:10;width:min(390px,calc(100vw - 48px));max-height:70dvh;overflow:auto;background:var(--bg);border:1px solid var(--line);box-shadow:0 8px 30px #0000000d;padding:20px;display:flex;flex-direction:column;gap:20px;font-size:12px}
-.silent-ui .note-options-panel .note-meta{flex-direction:column;align-items:stretch;gap:12px}
-.silent-ui .note-options-panel .note-meta input{max-width:none;width:100%}
-.silent-ui .note-options-panel .note-source-choice{display:flex;flex-wrap:wrap}
-.silent-ui .note-options-panel .note-source-choice select{max-width:100%;width:100%;font-size:12px}
-.silent-ui .note-options-panel .note-source-choice button{font-size:12px}
-.silent-ui .note-options-panel .note-footer{flex-wrap:wrap;gap:12px;font-size:12px}
-.silent-ui .note-options-panel .note-footer .check{flex-basis:100%}
 .silent-ui .minimal-note .note-markdown{min-height:0;padding:0}
 .silent-ui .minimal-note .note-content{min-height:420px;outline:none}
 .silent-ui .minimal-note>[hidden]{display:none}
-.note-options-panel #note-tutor-history:empty{display:none}
 .silent-ui .class-note-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:4px}
 .class-note-row .class-note-link{min-width:0;overflow-wrap:anywhere}
 .silent-ui .notes-sidebar #class-note-list{max-height:none;overflow:visible}
@@ -45,8 +33,8 @@
 .note-list-actions>summary{list-style:none;cursor:pointer;padding:6px 10px;color:var(--muted);font:20px/1 var(--sans,sans-serif)}
 .note-list-actions>summary::-webkit-details-marker{display:none}
 .note-list-actions[open]{z-index:2}
-.note-list-actions-menu{position:absolute;right:0;top:100%;min-width:175px;padding:8px;background:var(--bg);border:1px solid var(--line);box-shadow:0 6px 20px #0000000d;display:flex;flex-direction:column;gap:4px}
-.silent-ui .note-list-actions-menu button{text-align:left;padding:8px;font:12px/1.4 var(--sans,sans-serif)}
+.note-list-actions-menu{position:absolute;right:0;top:100%;width:max-content;min-width:0;padding:4px;background:var(--bg);border:1px solid var(--line);box-shadow:0 6px 20px #0000000d;display:flex;flex-direction:row;align-items:center;gap:2px}
+.silent-ui .note-list-actions-menu button{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;min-width:32px;padding:6px;font:12px/1.4 var(--sans,sans-serif)}
 .note-preface{margin-bottom:24px}
 .theory mark[role=button]{background:var(--mark-yellow);color:inherit;cursor:pointer;border-radius:2px}
 .theory mark[role=button][data-color=green]{background:var(--mark-green)}
@@ -74,13 +62,8 @@ html[data-theme=dark] body .reading-highlight-actions .danger{color:#f0a79b}
 .silent-ui .pdf-highlights .pdf-highlight[data-color=blue]{background:var(--pdf-blue)}
 .silent-ui .pdf-highlights .pdf-highlight[data-color=pink]{background:var(--pdf-pink)}
 .pdf-highlight:focus-visible{outline:2px solid var(--green);outline-offset:1px}
-.silent-ui .continuous-editor .note-options{top:16px;right:16px}
-.note-options-panel details summary{font-size:12px}
-.note-options-panel .note-tutor-entry{margin-top:12px}
 .silent-ui .minimal-note .note-markdown>h1:first-child{padding-right:36px;font-size:40px;font-weight:400}
-.silent-ui.global-focus .minimal-note .note-options{display:none}
 .silent-ui.global-focus .minimal-note .note-markdown>h1:first-child{padding-right:0}
-@media(max-width:700px){.note-options{top:30px;right:16px}.silent-ui .minimal-note .note-markdown>h1:first-child{font-size:32px}}
 .note-live-markdown .cm-editor{outline:none}
 .note-live-markdown .cm-scroller{font:inherit;line-height:1.8;overflow:visible}
 .note-live-markdown .cm-content{padding:0;caret-color:var(--ink);min-height:120px}
@@ -140,3 +123,30 @@ html[data-theme=dark] body .reading-highlight-actions .danger{color:#f0a79b}
   .note-inline .annotation-actions{opacity:0;pointer-events:none}
   .note-inline:hover .annotation-actions,.note-inline:focus-within .annotation-actions{opacity:1;pointer-events:auto}
 }
+#note-markdown-preview[data-empty="true"] .cm-line:first-child{position:relative}
+#note-markdown-preview[data-empty="true"] .cm-line:first-child::before{content:'Empezá a escribir…';position:absolute;inset:0 auto auto 0;color:var(--muted);font:inherit;pointer-events:none;white-space:nowrap}
+.silent-ui .minimal-note>.note-source-choice{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:4px 0 24px}
+.silent-ui .minimal-note>.note-source-choice button{font-size:12px}
+
+.note-title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 42px 18px 0;border-bottom:1px solid var(--line);margin-bottom:18px}
+.note-title-input{flex:1 1 260px;min-width:0;border:0;border-bottom:1px solid transparent;border-radius:0;padding:4px 0;background:transparent;color:var(--ink);font:400 clamp(28px,3vw,40px)/1.25 var(--serif);outline:none}
+.note-title-input::placeholder{color:var(--muted);opacity:.75}
+.note-title-input:focus{border-bottom-color:var(--line)}
+.note-title-row .note-source-choice{display:flex;align-items:center;gap:6px;margin:0}
+.note-title-row .note-source-choice .note-pdf-action{color:var(--muted);width:30px;height:30px}
+.note-title-row .note-source-choice .note-pdf-action:hover{color:var(--ink)}
+.note-save-indicator{flex-basis:100%;margin-top:-8px;color:var(--muted);font:11px/1.4 var(--sans,sans-serif);opacity:.75}
+.note-records{margin:18px 0;border-top:1px solid var(--line);padding-top:10px;color:var(--muted);font:12px/1.5 var(--sans,sans-serif)}
+.note-records>summary{cursor:pointer;list-style:none}
+.note-records>summary::-webkit-details-marker{display:none}
+.note-records>summary::before{content:'＋';display:inline-block;width:1.5em;color:var(--muted)}
+.note-records[open]>summary::before{content:'−'}
+.note-slash-menu{position:absolute;z-index:40;top:0;left:0;display:flex;flex-direction:column;min-width:min(260px,calc(100vw - 40px));max-height:min(360px,65dvh);overflow:auto;padding:6px;border:1px solid var(--line);border-radius:7px;background:var(--bg);box-shadow:0 8px 28px #00000018;font:13px/1.4 var(--sans,sans-serif)}
+.note-markdown-editor{position:relative}
+.note-slash-menu button{border:0;background:transparent;color:var(--ink);padding:8px 10px;text-align:left;font:inherit;cursor:pointer}
+.note-slash-menu button:hover,.note-slash-menu button:focus-visible{background:var(--panel,var(--bg));outline:none}
+.note-slash-menu button:last-child{color:#9a3b2f}
+@media(max-width:700px){.note-title-row{padding-right:0}.note-title-input{flex-basis:calc(100% - 52px);font-size:32px}.note-save-indicator{padding-left:2px}}
+
+/* Only the active writing surface shows a caret. */
+.note-editor .cm-editor:not(.cm-focused) .cm-cursorLayer,.note-editor .cm-editor:not(.cm-focused) .cm-fat-cursor{visibility:hidden!important}

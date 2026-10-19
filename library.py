@@ -208,8 +208,10 @@ class Library:
         directory=self.data/'documents';directory.mkdir(parents=True,exist_ok=True)
         path=directory/(document_id+'.pdf');path.write_bytes(raw)
         cache=directory/(document_id+'.json')
-        helper=self.root/'scripts'/'extract_document.py'
-        runtime=self.root/'.venv-author'/'bin'/'python'
+        # self.root holds this pliego's assets, not application executables.
+        application=Path(__file__).resolve().parent
+        helper=application/'scripts'/'extract_document.py'
+        runtime=application/'.venv-author'/'bin'/'python'
         try:
             result=subprocess.run([str(runtime),str(helper),str(path),str(cache)],capture_output=True,text=True,timeout=120)
             if result.returncode: raise ValueError('No se pudo leer el PDF. Probá un archivo sin contraseña y verificá que no esté dañado.')

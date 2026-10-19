@@ -574,6 +574,36 @@ def rename(data, root, room_id, title):
         return {'id': room_id, 'title': title, 'path': str(moved)}
 
 
+def trash(data, root, room_id):
+    """Remove a pliego from discovery by moving its complete folder to .papelera."""
+    if not isinstance(room_id, str) or room_id in (LOCAL_ID, TUTORIAL_ID):
+        raise ValueError('No se puede eliminar la biblioteca local ni el tutorial.')
+    with LOCK:
+        item = next((p for p in inventory(data, root, details=False, create=False)['pliegos']
+                     if p['id'] == room_id), None)
+        if item is None:
+            raise ValueError('Pliego no disponible.')
+        folder = Path(item['path'])
+        bin_folder = folder.parent/'.papelera'
+        if bin_folder.is_symlink():
+            raise ValueError('La papelera no admite enlaces simbólicos.')
+        bin_folder.mkdir(exist_ok=True)
+        destination = _unique_folder(bin_folder, folder.name)
+        entries = registry(data)
+        remaining = [entry for entry in entries if entry.get('id') != room_id]
+        folder.rename(destination)
+        try:
+            if remaining != entries:
+                pending = Path(data)/'rooms.json.tmp'
+                pending.write_text(json.dumps(remaining, ensure_ascii=False, indent=2)+'\n')
+                pending.replace(Path(data)/'rooms.json')
+        except OSError:
+            destination.rename(folder)
+            raise
+        _record_settle(data, folder)
+        return {'id': room_id, 'title': item['title'], 'trashPath': str(destination)}
+
+
 def register(bundle, data, root, title=''):
     from scripts.room_backup import restore_room, verify_bundle
     if not isinstance(title, str):

@@ -17,7 +17,9 @@ window.StudyPlan=(()=>{
   function dayCell(day,month=null){
     const out=E('section',{class:'calendar-day'+(day===state.localDate?' is-today':'')+(month!==null&&dateOf(day).getMonth()!==month?' outside-month':''),'data-date':day});
     out.append(E('button',{class:'text-button calendar-date',onclick:()=>{selected=day;mode='today';render();}},dateOf(day).toLocaleDateString('es-AR',{weekday:mode==='week'?'short':undefined,day:'numeric'})));
-    for(const event of onDay(day))out.append(eventButton(event));
+    const dayEvents=onDay(day),visible=month!==null?dayEvents.slice(0,2):dayEvents;
+    for(const event of visible)out.append(eventButton(event));
+    if(month!==null&&dayEvents.length>visible.length)out.append(E('button',{class:'text-button calendar-more','aria-label':`Ver ${dayEvents.length-visible.length} eventos más de ${label(day)}`,onclick:()=>{selected=day;mode='today';render();}},`+${dayEvents.length-visible.length} más`));
     if(mode==='week')out.append(E('small',{class:'muted calendar-allowance'},`${allowance(day)} min disponibles`));
     return out;
   }
