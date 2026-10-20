@@ -178,7 +178,7 @@ def build(lib, state, target, selection=None, message='', base_note=None):
                 add_pages(document_id,list(pages),source_id=source_id)
         history=[e for e in state['events'] if e['courseId']==course['id'] and e['data'].get('courseVersion',course['version'])==course['version']]
         if selection['includeHistory']:
-            shared=[e for e in history if e['kind'] not in ('annotation','annotation_resolved','visit','study_time','course_version')]
+            shared=[e for e in history if e['kind'] not in ('annotation','annotation_resolved','visit','study_time','study_session','course_version')]
             payload['recentHistory']=[sanitized_event(e) for e in shared[-70:]]
             for ev in shared:
                 if ev['kind']=='assessment':payload['latestAssessmentsByLesson'][ev['lessonId']]=sanitized_event(ev)['data']

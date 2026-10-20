@@ -13,7 +13,7 @@ const fs=require('fs'),os=require('os'),path=require('path'),net=require('net'),
   const text=`Consultá [SI](#note=${note.id}).`;
   course.version+='-links';course.lessons[0].blocks[0].text=text;await api('/api/course',course);
   browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||chromium.executablePath()});
-  const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base);
+  const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'#study');
   const link=page.getByRole('link',{name:'SI',exact:true});await link.waitFor();
   assert.equal(await link.locator('..').textContent(),text);
   assert(!(await link.locator('..').innerText()).includes('#note='));

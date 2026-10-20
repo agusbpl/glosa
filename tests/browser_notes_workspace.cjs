@@ -13,14 +13,16 @@ with server.connect() as conn: conn.execute('INSERT INTO documents VALUES(?,?)',
 server.library().save_note({'id':'previous-note','title':'Apunte anterior','folder':'Materia','content':'# Apunte anterior\\n\\nTexto conservado','contentFormat':'markdown','shared':False,'documentId':None,'page':None,'anchors':[]})
 server.library().save_note({'id':'legacy-pdf','title':'PDF anterior','folder':'','content':'Texto anterior al PDF','shared':False,'documentId':doc['id'],'page':1,'writingScope':'general','pageNotes':{doc['id']:{'1':'Celda previa'}},'anchors':[]})
 server.ThreadingHTTPServer(('127.0.0.1',server.PORT),server.Handler).serve_forever()
-`],{cwd:root,env:{...process.env,LEARNING_DATA_DIR:data,LEARNING_PORT:String(port)},stdio:['ignore','ignore','pipe']});
+`],{cwd:root,env:{...process.env,LEARNING_DATA_DIR:data,GLOSA_MARGEN_DIR:path.join(data,'margen'),LEARNING_PORT:String(port)},stdio:['ignore','ignore','pipe']});
   let browser,stderr='';service.stderr.on('data',d=>stderr+=d);const base=`http://127.0.0.1:${port}`,snapshot=async()=>await(await fetch(base+'/api/state')).json();
   try{
     for(let i=0;i<100;i++){try{await snapshot();break;}catch{}await new Promise(r=>setTimeout(r,100));if(i===99)throw Error(stderr);}
+    const course={schemaVersion:1,id:'qa-notes',version:'1',title:'Materia temporal',sources:[],lessons:[{id:'one',title:'Práctica',unit:'Unidad',intro:'Leé.',minutes:5,priority:1,blocks:[{id:'b',title:'Datos',text:'Una operación registra una transacción.'}],exercises:[{id:'e',type:'open',question:'Explicá',rubric:['Relaciona']}]}]};
+    assert((await fetch(base+'/api/course',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(course)})).ok);
     browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||chromium.executablePath()});
     const page=await browser.newPage({viewport:{width:1366,height:900}}),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&!m.text().startsWith('Failed to load resource')){errors.push(m.text());console.error(m.text());}});
-    await page.addInitScript(()=>{localStorage.setItem('glosa-active-room','local');localStorage.setItem('class-note-id','legacy-pdf');localStorage.setItem('class-note-mode:legacy-pdf','margin');});
-    await page.goto(base);await page.waitForSelector('.activity');await page.keyboard.type('gn');
+    await page.addInitScript(()=>{localStorage.setItem('glosa-active-room','local');localStorage.setItem('study-course','qa-notes');localStorage.setItem('study-lesson','one');localStorage.setItem('class-note-id','legacy-pdf');localStorage.setItem('class-note-mode:legacy-pdf','margin');});
+    await page.goto(base+'#study');await page.waitForSelector('.activity');await page.keyboard.type('gn');
     const raw=page.locator('#class-note-content'),editor=page.locator('#note-markdown-preview .cm-content');
     assert.equal(await raw.inputValue(),'# \n\n');assert(await editor.isVisible());assert.equal(await page.locator('.source-reader,.notes-empty').count(),0);assert.equal((await snapshot()).library.notes.length,2);
     await page.screenshot({path:'/tmp/glosa-notes-blank.png'});
@@ -32,7 +34,7 @@ server.ThreadingHTTPServer(('127.0.0.1',server.PORT),server.Handler).serve_forev
     await page.keyboard.press('Escape');await page.keyboard.press('Space');await page.keyboard.press('b');await page.getByLabel('Número de página',{exact:true}).fill('2');await page.getByRole('button',{name:'Abrir celda',exact:true}).click();await page.keyboard.type('Segunda página');await page.keyboard.press('Control+s');await page.waitForFunction(()=>document.getElementById('note-save-status').textContent==='Guardado en esta computadora');
     await page.waitForFunction(()=>document.getElementById('pdf-page').value==='2'&&document.getElementById('pdf-loading').hidden);note=(await snapshot()).library.notes.find(n=>n.id==='legacy-pdf');assert.equal((await snapshot()).library.notes.find(n=>n.id===id).content,'# Mi apunte\n\nAntes del PDF.');assert.equal(note.pageNotes['workspace-pdf']['1'],'Primera página');assert.equal(note.pageNotes['workspace-pdf']['2'],'Segunda página');
     await page.screenshot({path:'/tmp/glosa-notes-pdf-cells.png'});
-    await page.keyboard.press('Escape');await page.keyboard.press('Space');await page.keyboard.press('e');await page.waitForSelector('.activity');await page.keyboard.press('Space');await page.keyboard.press('n');assert.equal(await raw.inputValue(),'# \n\n');assert.equal(await page.locator('.source-reader').count(),0);
+    await page.keyboard.press('Escape');await page.keyboard.press('Space');await page.keyboard.press('e');await page.waitForSelector('.activity');await page.keyboard.press('Space');await page.keyboard.press('n');await page.waitForFunction(()=>document.getElementById('pdf-loading')?.hidden===true);assert.equal(await page.locator('#note-title-input').inputValue(),'PDF anterior');assert.equal(await page.locator('.source-reader').count(),1);
     await page.evaluate(()=>ClassNotes.openList());await page.locator('.class-note-row[data-note-id="legacy-pdf"] .class-note-link').click();await page.waitForFunction(()=>document.getElementById('pdf-loading')?.hidden===true);
 
     const list=async()=>{await page.evaluate(()=>ClassNotes.openList());await page.locator('.notes-sidebar').waitFor({state:'visible'});};

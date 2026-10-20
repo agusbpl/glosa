@@ -316,3 +316,8 @@ html[data-theme=dark] body .accent-swatch[data-accent=graphite]{background:#b9bd
 #settings-dialog form>.settings-section,#settings-dialog form>.appearance-options{overflow:visible;min-height:0}
 #settings-dialog .settings-actions{position:sticky;bottom:-1px}
 .calendar-more{display:block;font-size:10px;padding:3px 4px;border-radius:4px;background:var(--pale)}
+
+/* Host palette: tokens come from validated colors, never arbitrary theme CSS. */
+html body[data-omarchy=true] :is(.tutor,.message.assistant,.message.student,.chat-empty,.notes-sidebar,.source-reader,.simulation,.flow-cell,.class-note-link.active){background:var(--paper);color:var(--ink);border-color:var(--line)}
+html body[data-omarchy=true] :is(.primary,.brand-icon){background:var(--accent-solid);color:var(--on-accent);border-color:var(--accent-solid)}
+#omarchy-theme-option[hidden]{display:none}

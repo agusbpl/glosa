@@ -86,6 +86,29 @@ class LearningTests(unittest.TestCase):
         with urlopen(self.base+path) as r: return json.load(r)
     def answer(self,exid=None):
         return self.post('/api/event',{'id':'answer-1','kind':'answer','courseId':self.cid,'lessonId':self.lid,'data':{'exerciseId':exid or self.course['lessons'][0]['exercises'][0]['id'],'text':'Respuesta original del estudiante'}})
+    def test_exam_mode_contract_and_unanswered_choice(self):
+        lesson=self.course['lessons'][0]
+        for mode in ('exam','study'):
+            lesson['mode']=mode
+            server.validate_course(self.course)
+        for mode in ('wizard',None,True):
+            lesson['mode']=mode
+            with self.assertRaises(ValueError):server.validate_course(self.course)
+        lesson['mode']='exam'
+        self.course['version']='exam-contract-test'
+        self.post('/api/course',self.course)
+        ex=next(ex for ex in lesson['exercises'] if ex['type']=='choice')
+        payload={'kind':'answer','courseId':self.cid,'lessonId':self.lid,
+                 'data':{'exerciseId':ex['id'],'selectedIndex':None,'text':'','choiceCorrect':True}}
+        saved=self.post('/api/event',payload)['data']
+        self.assertIsNone(saved['selectedIndex'])
+        self.assertIsNone(saved['choiceCorrect'])
+        self.assertEqual(saved['text'],'')
+        payload['data']['text']='No es una selección vacía'
+        with self.assertRaises(HTTPError):self.post('/api/event',payload)
+        payload['data'].update(text='',selectedIndex=-1)
+        with self.assertRaises(HTTPError):self.post('/api/event',payload)
+
     def test_answer_survives_tutor_failure_and_retry_is_idempotent(self):
         first=self.answer();second=self.answer()
         self.assertEqual(first,second)
@@ -123,6 +146,53 @@ class LearningTests(unittest.TestCase):
         server.event('tutor_reply',self.cid,self.lid,{'exerciseId':None,'courseVersion':self.course['version'],'reply':'Ayuda para el grupo.'})
         answer=self.answer()
         self.assertTrue(answer['data']['helpReceived'])
+    def test_study_note_retry_resumes_saved_note_and_links_once(self):
+        block=self.course['lessons'][0]['blocks'][0]
+        quote=block['text'][:12]
+        request_id='study-retry-regression'
+        note_id='study-'+server.hashlib.sha256(request_id.encode()).hexdigest()[:32]
+        content='Definición escrita por la estudiante.'
+        server.library().save_note({'id':note_id,'title':'Concepto de prueba','folder':'','content':content,
+                                    'contentFormat':'markdown','shared':False,'documentId':None,'page':None,
+                                    'writingScope':'general','pageNotes':{},'anchors':[]})
+        payload={'requestId':request_id,'courseId':self.cid,'lessonId':self.lid,
+                 'version':self.course['version'],'blockId':block['id'],'quote':quote,'start':0,
+                 'end':len(quote),'title':'Concepto de prueba','content':content,'linkSelection':True}
+        first=self.post('/api/study-note',payload)
+        second=self.post('/api/study-note',payload)
+        self.assertEqual(first,second)
+        self.assertEqual(first['id'],note_id)
+        state=self.get('/api/state')
+        saved=next(n for n in state['library']['notes'] if n['id']==note_id)
+        self.assertEqual(saved['revision'],1)
+        self.assertEqual(len([n for n in state['library']['noteVersions'] if n['noteId']==note_id]),0)
+        linked=next(b for l in state['courses'][0]['lessons'] if l['id']==self.lid for b in l['blocks'] if b['id']==block['id'])
+        self.assertEqual(linked['text'].count('(#note='+note_id+')'),1)
+        with self.assertRaises(HTTPError):
+            self.post('/api/study-note',{**payload,'content':'Texto distinto bajo la misma solicitud.'})
+        after=self.get('/api/state')
+        unchanged=next(n for n in after['library']['notes'] if n['id']==note_id)
+        self.assertEqual(unchanged['content'],content)
+        self.assertEqual(linked['text'].count('(#note='+note_id+')'),1)
+    def test_study_note_retry_does_not_adopt_edited_deterministic_note(self):
+        block=self.course['lessons'][0]['blocks'][0]
+        quote=block['text'][:12]
+        request_id='study-edited-retry-regression'
+        note_id='study-'+server.hashlib.sha256(request_id.encode()).hexdigest()[:32]
+        content='Contenido original.'
+        note=server.library().save_note({'id':note_id,'title':'Concepto editado','folder':'','content':content,
+                                         'contentFormat':'markdown','shared':False,'documentId':None,'page':None,
+                                         'writingScope':'general','pageNotes':{},'anchors':[]})
+        edited=server.library().save_note({**note,'content':'Edición posterior que debe conservarse.'})
+        payload={'requestId':request_id,'courseId':self.cid,'lessonId':self.lid,
+                 'version':self.course['version'],'blockId':block['id'],'quote':quote,'start':0,
+                 'end':len(quote),'title':'Concepto editado','content':content,'linkSelection':True}
+        with self.assertRaises(HTTPError):self.post('/api/study-note',payload)
+        state=self.get('/api/state')
+        saved=next(n for n in state['library']['notes'] if n['id']==note_id)
+        self.assertEqual(saved['revision'],edited['revision'])
+        self.assertEqual(saved['content'],'Edición posterior que debe conservarse.')
+        self.assertNotIn('(#note='+note_id+')',state['courses'][0]['lessons'][0]['blocks'][0]['text'])
     def test_continuation_handoff_preserves_history_and_rejects_conflicts(self):
         import continuation
         original=self.answer()
@@ -167,7 +237,7 @@ class LearningTests(unittest.TestCase):
     def test_provider_credentials_are_separate_and_never_exported(self):
         with patch.object(server,'KEY',''), patch.dict(server.PROVIDER_KEYS,{},clear=True):
             providers=self.get('/api/providers')['providers']
-            self.assertEqual({p['id'] for p in providers},{'openrouter','freellmapi','intern','opencode'})
+            self.assertEqual({p['id'] for p in providers},{'openrouter','freellmapi','intern','opencode','deepseek','compatible'})
             for provider,model in (('openrouter','openrouter/free'),('freellmapi','auto'),('intern','model-from-panel')):
                 self.post('/api/settings',{**server.BASE_SETTINGS,'provider':provider,'model':model})
                 self.assertFalse(self.get('/api/state')['tutorConnected'])
@@ -235,9 +305,10 @@ print(json.dumps([
 
     def test_new_providers_route_both_tutors_and_catalog_with_correct_auth(self):
         with patch.dict(server.PROVIDER_KEYS,{},clear=True):
-            for provider,model in (('freellmapi','auto'),('intern','model-from-panel')):
+            for provider,model in (('freellmapi','auto'),('intern','model-from-panel'),('deepseek','deepseek-flash'),('compatible','custom-model')):
                 with self.subTest(provider=provider):
-                    self.post('/api/settings',{**server.BASE_SETTINGS,'provider':provider,'model':model})
+                    fields={'providerBaseUrl':'https://custom.example/v1'} if provider=='compatible' else {}
+                    self.post('/api/settings',{**server.BASE_SETTINGS,'provider':provider,'model':model,**fields})
                     self.post('/api/key',{'key':provider+'-secret'})
                     captured=[]
                     def transport(req,timeout):
@@ -255,7 +326,7 @@ print(json.dumps([
                         self.assertEqual(result['tutorContext']['provider'],provider)
                         self.assertEqual(result['model'],'served-model')
                     for req in captured:
-                        self.assertTrue(req.full_url.startswith(server.llm_providers.PROVIDERS[provider]['baseUrl']+'/'))
+                        self.assertTrue(req.full_url.startswith((fields.get('providerBaseUrl') or server.llm_providers.PROVIDERS[provider]['baseUrl'])+'/'))
                         self.assertEqual(req.get_header('Authorization'),'Bearer '+provider+'-secret')
                         if req.data:
                             body=json.loads(req.data)
@@ -662,6 +733,10 @@ print(json.dumps([
             self.assertEqual(self.get('/api/state')['courses'][0]['id'],self.cid)
 
     def note(self, **fields):
+        if 'title' not in fields:
+            notes=self.get('/api/state')['library']['notes']
+            existing=next((n for n in notes if n['id']==fields.get('id')),None)
+            fields['title']=existing['title'] if existing else 'Clase sin filmina'+(' '+str(len(notes)+1) if notes else '')
         return self.post('/api/notes', {'title':'Clase sin filmina','folder':'Otra materia','content':'¿Cómo se relacionan? — Apunte original.', 'shared':False,'documentId':None,'page':None,'anchors':[], **fields})
 
     def note_question(self,note,**fields):

@@ -51,8 +51,8 @@ window.WorkspaceKeys=(()=>{
   }
   async function toggleFocus(){await preference({focusMode:!state.settings.focusMode});}
   async function go(next){
-    if(view==='notes')await ClassNotes.flush();await flushTime();endVisual();cancelLeader();view=next;render();
-    closePanels(false);mode='NORMAL';sync();window.scrollTo({top:0});if(next==='notes')ClassNotes.focusBody();else document.getElementById('main').focus({preventScroll:true});
+    window.ViewPosition?.capture();if(view==='notes')await ClassNotes.flush();await flushTime();endVisual();cancelLeader();view=next;render();
+    closePanels(false);mode='NORMAL';sync();if(next==='notes')ClassNotes.focusBody();else document.getElementById('main').focus({preventScroll:true});if(window.ViewPosition)ViewPosition.restore();else window.scrollTo({top:0});
   }
   function focusPanel(selector){
     const el=document.querySelector(selector);if(!el)return;

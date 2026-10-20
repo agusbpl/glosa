@@ -54,3 +54,5 @@ Los cursos y las evaluaciones requieren revisión humana de fuentes y rúbricas.
 ## Participar
 
 El código de Glosa se distribuye bajo [Apache License 2.0](LICENSE). Las contribuciones se reciben bajo la misma licencia; consultá [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) y [SUPPORT.md](SUPPORT.md). Las bibliotecas vendorizadas conservan sus licencias, indicadas en [NOTICE](NOTICE). La distribución usa un árbol y una historia filtrados según la [revisión de release](docs/release.md); los materiales de terceros necesitan permisos independientes.
+
+En **Tu entorno → Apariencia → Tema**, la opción **Omarchy** aparece cuando la instalación que sirve Glosa tiene una paleta válida en `$XDG_STATE_HOME/omarchy/current/theme/colors.toml` (por defecto `~/.local/state`); también se admite la ubicación anterior en `~/.config/omarchy/current/theme/colors.toml`. Sigue sus cambios cada 15 segundos y al volver a la ventana; el acento también lo define esa paleta. La elección se guarda por navegador. Si la paleta deja de estar disponible, se usa temporalmente el tema del sistema. En acceso remoto se toman los colores del equipo que sirve Glosa.

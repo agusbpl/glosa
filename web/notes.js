@@ -3,7 +3,7 @@ window.ClassNotes=(()=>{
   let currentId=null, current=null, pristineId=null, baseline=null, saveTimer=null, serial=Promise.resolve(), saving=false, generation=0;
   let documentLoad=null, documentGeneration=0;
   let cursorTimer=null,resizeTimer=null,readerObserver=null;
-  let liveEditor=null,prefaceEditor=null;
+  let liveEditor=null,prefaceEditor=null,liveSelection={anchor:0,head:0};
   let query='', folder='', pdf=null, loadingPdf=null, renderTask=null, pdfId=null, pageNumber=1, zoom=1, pdfSelection=null;
   const data=()=>state.library;
   const conversations=()=>data()?.noteTutor||[];
@@ -244,7 +244,14 @@ window.ClassNotes=(()=>{
   function changes(){if(current){pristineId=null;remember();status('Borrador local · guardando…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>flush().catch(e=>notify(e.message)),850);}}
   function flush(){clearTimeout(saveTimer);if(!current||current.id===pristineId)return serial;if(current.markdownDraft&&continuous())storeWriting(current.markdownDraft.text);if(current.markdownDraft)return Promise.reject(Error('Hay un número de página repetido o fuera del PDF. Tu borrador está conservado.'));const id=current.id;
     serial=serial.catch(()=>{}).then(async()=>{if(!current||current.id!==id)return;if(current.markdownDraft)throw Error('Hay un número de página repetido o fuera del PDF. Tu borrador está conservado.');const submitted=JSON.parse(JSON.stringify(current));saving=true;
-      try{const result=await api('/api/notes',submitted);const changed=JSON.stringify(current)!==JSON.stringify(submitted);baseline=JSON.parse(JSON.stringify(result));current.revision=result.revision;current.updatedAt=result.updatedAt;current.createdAt=result.createdAt;
+      try{
+        const titleKey=value=>value.normalize('NFC').trim().replace(/\s+/g,' ').toLocaleLowerCase();
+        const existing=data().notes.find(n=>!n.deletedAt&&n.id!==submitted.id&&titleKey(n.title)===titleKey(submitted.title));
+        if(existing&&!data().notes.some(n=>n.id===submitted.id)){
+          remember();currentId=existing.id;current=JSON.parse(JSON.stringify(existing));baseline=JSON.parse(JSON.stringify(existing));pristineId=null;
+          GlosaRoom.storage.setItem('class-note-active-draft',existing.id);rememberTextNote();render();focusBody();return;
+        }
+        const result=await api('/api/notes',submitted);const changed=JSON.stringify(current)!==JSON.stringify(submitted);baseline=JSON.parse(JSON.stringify(result));current.revision=result.revision;current.updatedAt=result.updatedAt;current.createdAt=result.createdAt;
         const i=data().notes.findIndex(n=>n.id===id);if(i>=0)data().notes[i]=result;else data().notes.push(result);
         if(changed){remember();changes();}else{current=result;GlosaRoom.storage.removeItem('class-note-draft:'+id);if(GlosaRoom.storage.getItem('class-note-active-draft')===id)GlosaRoom.storage.removeItem('class-note-active-draft');status('Guardado en esta computadora');renderList();}
       }catch(e){remember();status('Sin guardar en el servidor · borrador local conservado');
@@ -275,7 +282,7 @@ window.ClassNotes=(()=>{
   }
   function blank(){currentId=crypto.randomUUID();pristineId=currentId;baseline=null;current={id:currentId,title:'Apunte sin título',folder:folder||'',content:'# \n\n',contentFormat:'markdown',shared:false,documentId:null,page:null,writingScope:'general',pageNotes:{},anchors:[]};}
   function activeNote(){
-    const draftId=currentId||GlosaRoom.storage.getItem('class-note-active-draft'),found=data().notes.find(n=>n.id===draftId);
+    const draftId=currentId||window.ViewPosition?.activeNote()||GlosaRoom.storage.getItem('class-note-active-draft'),found=data().notes.find(n=>n.id===draftId);
     let restored=found?JSON.parse(JSON.stringify(found)):null;
     const draft=draftId&&GlosaRoom.storage.getItem('class-note-draft:'+draftId);if(draft){try{const parsed=JSON.parse(draft);if(parsed.id===draftId)restored=parsed;}catch{}}
     if(!restored){blank();return;}current=restored;currentId=current.id;pristineId=null;baseline=found?JSON.parse(JSON.stringify(found)):null;
@@ -300,8 +307,8 @@ window.ClassNotes=(()=>{
     }
     const warnings=data().noteWarnings||[];if(warnings.length)notify('Apuntes: '+warnings[0]);
   }
-  async function select(id){await flush();rememberTextNote();closeList();currentId=id;current=null;activeNote();rememberTextNote();render();focusBody();}
-  async function create(options={}){await flush();closeList();blank();if(options.title)current.title=options.title;if(options.folder)current.folder=options.folder;render();const input=edit();input?.focus();if(liveEditor){liveEditor.setSelection(liveEditor.text().length);liveEditor.enterInsert();}else input?.setSelectionRange(0,0);}
+  async function select(id){window.ViewPosition?.capture();await flush();rememberTextNote();closeList();currentId=id;current=null;activeNote();rememberTextNote();render();focusBody();window.ViewPosition?.restore();}
+  async function create(options={}){await flush();closeList();{const desiredTitle=options.title||'Apunte sin título';const key=s=>s.normalize('NFC').trim().replace(/\s+/g,' ').toLocaleLowerCase();const existing=data().notes.find(n=>!n.deletedAt&&key(n.title)===key(desiredTitle));if(existing){await select(existing.id);return;}}blank();if(options.title)current.title=options.title;if(options.folder)current.folder=options.folder;render();const input=edit();input?.focus();if(liveEditor){liveEditor.setSelection(liveEditor.text().length);liveEditor.enterInsert();}else input?.setSelectionRange(0,0);}
   async function usePdf(doc){
     await flush();
     if(current?.documentId===doc.id)return;
@@ -403,7 +410,7 @@ window.ClassNotes=(()=>{
     readerObserver?.disconnect();const scroll=document.getElementById('pdf-scroll');if(!scroll)return;let width=scroll.clientWidth;
     readerObserver=new ResizeObserver(()=>{const next=scroll.clientWidth;if(next===width)return;width=next;clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(view==='notes'&&pdf&&scroll.isConnected)paint({preserveScroll:true}).catch(pdfError);},120);});readerObserver.observe(scroll);
   }
-  function render(){liveEditor?.destroy();liveEditor=null;prefaceEditor?.destroy();prefaceEditor=null;clearTimeout(cursorTimer);generation++;renderTask?.cancel();document.querySelector('.workspace').classList.add('notes-view');if(!current)activeNote();updateHeading();
+  function render(){liveEditor?.destroy();liveEditor=null;prefaceEditor?.destroy();prefaceEditor=null;clearTimeout(cursorTimer);generation++;renderTask?.cancel();document.querySelector('.workspace').classList.add('notes-view');if(!current)activeNote();liveSelection={anchor:0,head:0};const savedReader=window.ViewPosition?.read({view:'notes',course:cid||'',item:current.id})?.reader;if(savedReader&&savedReader.documentId===current.documentId)zoom=Math.max(.5,Math.min(3,Number(savedReader.zoom)||1));else zoom=1;updateHeading();
     const sidebar=E('aside',{class:'notes-sidebar'},E('div',{class:'eyebrow'},'TU ESPACIO DE NOTAS'),E('h2',{},'Apuntes'),E('button',{class:'primary',onclick:()=>create().catch(e=>notify(e.message))},'＋ Nueva nota'));
     sidebar.inert=!document.body.classList.contains('notes-list-open');
     sidebar.prepend(E('button',{class:'text-button panel-close',onclick:closeList},'Cerrar · Esc'));
@@ -430,7 +437,8 @@ window.ClassNotes=(()=>{
         content.addEventListener('blur',e=>{if(VimEditors.sourceFor(e.relatedTarget)!==content)reading(true);});
         const preview=E('article',{id:'note-markdown-preview',class:'note-markdown note-live-markdown','aria-label':'Apunte en Markdown'});
         preview.dataset.empty=String(editorBody(writingText()).length===0);
-        liveEditor=NoteLiveMarkdown.create(preview,editorBody(writingText()),text=>{preview.dataset.empty=String(text.length===0);content.value=markdownWithTitle(text);storeWriting(content.value);});
+        liveEditor=NoteLiveMarkdown.create(preview,editorBody(writingText()),text=>{preview.dataset.empty=String(text.length===0);content.value=markdownWithTitle(text);storeWriting(content.value);},{onSelection:range=>{liveSelection={anchor:range.anchor,head:range.head};}});
+        if(savedReader?.editor&&!current.documentId){const max=liveEditor.text().length;liveEditor.setSelection(Math.max(0,Math.min(max,Number(savedReader.editor.anchor)||0)),Math.max(0,Math.min(max,Number(savedReader.editor.head)||0)));}
         liveEditor.element.addEventListener('click',()=>liveEditor?.enterInsert());
         const body=E('div',{class:'note-markdown-editor'},preview,content);
         writing=body;
@@ -528,7 +536,7 @@ window.ClassNotes=(()=>{
     drawPdfHighlights();
     const pageInput=document.getElementById('pdf-page');if(pageInput){pageInput.value=pageNumber;pageInput.max=pdf.numPages;document.getElementById('pdf-page-count').textContent=pageNumber+' / '+pdf.numPages;document.getElementById('pdf-loading').hidden=true;}
     scroll.scrollTop=position?position.top*viewport.height:0;
-    scroll.scrollLeft=position?position.left*viewport.width:0;
+    scroll.scrollLeft=position?position.left*viewport.width:0;window.ViewPosition?.settled();
   }
   async function zoomBy(delta){
     if(!pdf||view!=='notes'||mode()==='page'||!document.getElementById('pdf-scroll'))return;
@@ -582,5 +590,5 @@ window.ClassNotes=(()=>{
     clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(view==='notes'&&pdf&&mode()!=='page')paint({preserveScroll:true}).catch(pdfError);},150);
   });
   window.addEventListener('beforeunload',()=>{if(current&&dirty()){remember();navigator.sendBeacon('/api/notes',new Blob([JSON.stringify(current)],{type:'application/json'}));}});
-  return {render,flush,select,current:()=>current,currentId:()=>currentId,applyStudy,refresh:refreshFromServer,create,mode,closePdf,openList,closeList,highlightSelection,annotate,askCurrent,openTutor,edit,focusBody,showRecords,refreshTutorHistory:renderTutorHistory,sendQuestion,input:activeWritingInput,followCursor:()=>followNoteCursor(activeWritingInput(),false),newPageCell,moveCell,contextTarget:()=>({kind:'note',...questionContext()}),openPdf,readStep,zoomBy,rename,properties,deleteNote,changePage,exportNote,upload,startResize,endResize,resizeSplit,resetSplit,leave:()=>{liveEditor?.destroy();liveEditor=null;prefaceEditor?.destroy();prefaceEditor=null;readerObserver?.disconnect();clearTimeout(resizeTimer);document.body.classList.remove('resizing-pointer');clearTimeout(cursorTimer);current=null;currentId=null;pristineId=null;baseline=null;closeList();generation++;renderTask?.cancel();document.querySelector('.workspace').classList.remove('notes-view');}};
+  return {readerPosition:()=>({documentId:current?.documentId||null,page:pageNumber,zoom,editor:current?.documentId?null:liveSelection}),render,flush,select,current:()=>current,currentId:()=>currentId,applyStudy,refresh:refreshFromServer,create,mode,closePdf,openList,closeList,highlightSelection,annotate,askCurrent,openTutor,edit,focusBody,showRecords,refreshTutorHistory:renderTutorHistory,sendQuestion,input:activeWritingInput,followCursor:()=>followNoteCursor(activeWritingInput(),false),newPageCell,moveCell,contextTarget:()=>({kind:'note',...questionContext()}),openPdf,readStep,zoomBy,rename,properties,deleteNote,changePage,exportNote,upload,startResize,endResize,resizeSplit,resetSplit,leave:()=>{liveEditor?.destroy();liveEditor=null;prefaceEditor?.destroy();prefaceEditor=null;readerObserver?.disconnect();clearTimeout(resizeTimer);document.body.classList.remove('resizing-pointer');clearTimeout(cursorTimer);current=null;currentId=null;pristineId=null;baseline=null;closeList();generation++;renderTask?.cancel();document.querySelector('.workspace').classList.remove('notes-view');}};
 })();

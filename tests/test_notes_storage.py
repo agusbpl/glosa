@@ -47,12 +47,9 @@ class NotesStorageTests(unittest.TestCase):
         foreign = self.root/'Apunte.md'
         foreign.write_text('# Apunte\n\nTexto ajeno que no es de Glosa.\n', encoding='utf-8')
         before = foreign.read_bytes()
-        note = self.note(title='Apunte', content='Mi texto de Glosa')
+        with self.assertRaisesRegex(ValueError,'Ya existe'):
+            self.note(title='Apunte', content='Mi texto de Glosa')
         self.assertEqual(foreign.read_bytes(), before)
-        self.assertNotEqual(self.lib.note_file(note['id']), foreign)
-        self.assertTrue(self.lib.note_file(note['id']).is_file())
-        self.assertEqual(self.rel(note['id']), 'Apunte (2).md')
-        # El ajeno fue adoptado como apunte aparte, sin perder su texto.
         adopted = [n for n in self.lib.snapshot()['notes'] if 'Texto ajeno' in n['content']]
         self.assertEqual(len(adopted), 1)
 
@@ -194,12 +191,13 @@ class NotesStorageTests(unittest.TestCase):
         self.assertEqual(duplicate.read_bytes(), before_b)
         self.assertEqual(len([n for n in state['notes'] if n['id'] == note['id']]), 1)
 
-    def test_repeated_titles_get_distinct_files_and_ids(self):
+    def test_repeated_titles_reuse_existing_identity_for_editing(self):
         first = self.note(title='Repetido')
-        second = self.note(title='Repetido', content='Otro texto')
-        self.assertNotEqual(first['id'], second['id'])
-        self.assertEqual(self.rel(first['id']), 'Repetido.md')
-        self.assertEqual(self.rel(second['id']), 'Repetido (2).md')
+        with self.assertRaisesRegex(ValueError,'Ya existe'):
+            self.note(title='Repetido',content='Otro texto')
+        second=self.note(**{**first,'content':'Otro texto'})
+        self.assertEqual(first['id'],second['id'])
+        self.assertEqual(self.rel(second['id']),'Repetido.md')
 
     # --- Identidad portable de apuntes externos sin glosa_id ---------------- #
 

@@ -28,9 +28,10 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'reply':'Respuesta de
   let stderr='',browser;service.stderr.on('data',c=>stderr+=c);
   try {
     for(let i=0;i<100;i++){try{await json(base+'/api/state');break;}catch{if(i===99)throw Error(stderr);await new Promise(resolve=>setTimeout(resolve,100));}}
+    const seed=await fetch(base+'/api/course',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schemaVersion:1,id:'qa-provider',version:'1',title:'Materia de prueba',sources:[],lessons:[{id:'one',title:'Tema',unit:'Unidad',intro:'Leé.',minutes:10,priority:1,blocks:[{id:'b',title:'Concepto',text:'Una explicación para consultar.'}],exercises:[{id:'e',type:'open',question:'Explicá la relación',rubric:['Relaciona'] }]}]})});assert(seed.ok);
     browser=await chromium.launch({headless:true,args:['--disable-dev-shm-usage'],executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||chromium.executablePath()});
     const page=await browser.newPage({viewport:{width:1280,height:1000}}),errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('Browser error:',e.message);});
-    await page.addInitScript(()=>localStorage.setItem('glosa-active-room','local'));await page.goto(base);await page.waitForSelector('.activity');
+    await page.addInitScript(()=>localStorage.setItem('glosa-active-room','local'));await page.goto(base+'#study');await page.waitForSelector('.activity');
     const openSettings=async()=>{await page.locator('#main').focus();await page.keyboard.type('ga');await page.waitForSelector('#settings-dialog[open]');};
     await openSettings();await page.locator('#provider-select').selectOption('freellmapi');
     assert.equal(await page.locator('#model-select').inputValue(),'auto');assert(await page.locator('#provider-base-url').isVisible());
@@ -75,6 +76,12 @@ print(json.dumps({'type':'text','part':{'text':json.dumps({'reply':'Respuesta de
     assert.deepEqual(session.body.permissions,[{action:'*',resource:'*',effect:'ask'}]);
     assert(!calls.some(c=>c.url==='/api/experimental/generate'));
     await openSettings();assert.equal(await page.locator('#provider-base-url').inputValue(),providerUrl.replace('/v1',''));
+    await page.locator('#provider-select').selectOption('deepseek');assert.equal(await page.locator('#model-select').inputValue(),'deepseek-flash');assert(!(await page.locator('#provider-base-url').isVisible()));
+    await page.locator('#provider-select').selectOption('compatible');assert(await page.locator('#provider-base-url').isVisible());
+    await page.locator('#provider-base-url').fill(providerUrl);await page.locator('#custom-model').fill('test-model');await page.locator('#api-key').fill('custom-secret');
+    await page.getByRole('button',{name:'Guardar ajustes',exact:true}).click();await page.waitForSelector('#settings-dialog[open]',{state:'detached'});
+    state=await json(base+'/api/state');assert.equal(state.settings.provider,'compatible');assert.equal(state.settings.model,'test-model');assert.equal(state.settings.providerBaseUrl,providerUrl);assert(state.tutorConnected);
+    assert(!JSON.stringify(await json(base+'/api/export.json')).includes('custom-secret'));await openSettings();
     await page.setViewportSize({width:390,height:844});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     await page.screenshot({path:path.join(os.tmpdir(),'glosa-providers-mobile.png')});assert.deepEqual(errors,[]);
     console.log('OK: provider selector, catalog, real local authenticated chat, custom Intern model, key isolation, exports, disconnect, OpenCode v2 and mobile. No external model calls.');

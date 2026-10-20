@@ -90,7 +90,9 @@ window.GlosaHome = (() => {
     if (!future.length) aside.append(node('div', {class:'home-agenda-empty'}, icon('calendar'), node('p', {}, 'Tu agenda está libre.'), data.pliegos.length ? button('Cargar horario', 'plus', () => editEvent()) : node('p',{class:'home-empty-prerequisite'},'Crear un pliego para cargar horarios.')));
     aside.append(button('Ver calendario', 'arrow', showCalendar, 'home-agenda-link'));
     const footer = node('footer', {class:'home-footer'}, button('Primer trazo · Tutorial', 'book', () => enter('primer-trazo')), data.legacyLocal ? button('Biblioteca local', 'book', () => enter('local')) : null, button('Horarios de clase', 'clock', () => showCalendar(true)), button('Ubicación del Margen', 'settings', () => window.GlosaSettings?.open ? window.GlosaSettings.open('margen') : settings()));
-    content.replaceChildren(header, title, node('div', {class:'home-columns'}, library, aside), footer);
+    const activity=content.querySelector('.activity-calendar')||node('section',{'aria-label':'Actividad general de Glosa'});
+    content.replaceChildren(header, title, node('div', {class:'home-columns'}, library, aside), activity, footer);
+    if(activity.classList.contains('activity-calendar'))activity.refreshActivity?.();else window.ActivityCalendar?.mount(activity);
     status.textContent = data.warnings.join(' · ');
   }
   function classCard(event) {
@@ -164,7 +166,7 @@ window.GlosaHome = (() => {
       const save=node('button', {type:'submit', class:'home-button home-primary'}, icon('edit'), 'Guardar'); const message=node('p', {role:'status'});
       form.replaceChildren(node('h2', {}, 'Renombrar pliego'), name, message, save, button('Cancelar', 'close', () => box.close())); name.focus();
       form.addEventListener('submit', async e => {e.preventDefault();save.disabled=true;try {await api('/api/rooms/rename', {id:p.id, title:name.value});box.close();await refresh();}catch(err){message.textContent=err.message;save.disabled=false;}});
-    }), button('Exportar pliego', 'upload', async () => {
+    }), button('Exportar lecciones · HTML / PDF', 'upload', () => {box.close();LessonExport.open(p.id);}), button('Exportar pliego', 'upload', async () => {
       const response=await fetch(GlosaRoom.url('/api/rooms/export').replace(/room=[^&]*/, 'room='+encodeURIComponent(p.id)), {headers:{'X-Glosa-Room':p.id}});
       if(!response.ok)throw Error((await response.json()).error);
       const url=URL.createObjectURL(await response.blob()), link=node('a',{href:url,download:p.title+'.zip'}); link.click(); setTimeout(()=>URL.revokeObjectURL(url),10000);box.close();

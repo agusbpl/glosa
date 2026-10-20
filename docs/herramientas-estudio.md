@@ -181,3 +181,35 @@ metadata, filtros y recarga.
   `ClassNotes.select` si `notes.js` lo exporta). Mientras `select` no esté
   exportado, se apoya en los enlaces de la lista lateral, que internamente hacen
   flush del borrador.
+
+## Escribir una nota para un término mientras leés
+
+Seleccioná el término en Estudiar y pulsá su resaltado. **Crear nota de concepto**
+abre un editor para escribir tu explicación y **Guardar y enlazar** crea la nota
+nativa y el enlace en ese lugar de la lección. Funciona sin tutor conectado; la
+opción de generar un apunte con el agente sigue disponible como acción separada.
+La nota escrita por vos queda privada inicialmente y se puede ampliar desde Notas.
+Un comentario sobre el resaltado sigue siendo una anotación diferente de esta nota.
+
+Al alternar entre Estudiar y Notas se recuperan la lección, el apunte activo y la
+posición de lectura de cada vista. También se conservan página, zoom y posición del
+PDF y el cursor de notas simples. Las posiciones se guardan por pliego y contexto,
+sin copiar el contenido del apunte. La navegación a otra lección comienza arriba.
+
+## Notas de concepto y enlaces
+
+La barra del resaltado tiene una sola acción manual de nota, con icono de lápiz. Crea una nota de concepto o permite editar un comentario previo del resaltado. La nota se guarda como un apunte independiente, editable en Notas. Al crearla podés desactivar **Enlazar el término con esta nota**: se guarda el apunte y la lección no cambia.
+
+Al tocar un enlace cuyo apunte ya no existe, elegí **Quitar enlace** para conservar el término como texto. Para una nota existente, la vista previa ofrece **Quitar enlace del texto**. Se conserva la nota, el historial del curso y los resaltados.
+
+## Proveedor del tutor
+
+En Ajustes → Tutor podés elegir **DeepSeek directo**, pegar su clave y usar el catálogo de modelos o escribir un ID. La URL oficial es `https://api.deepseek.com`; se verificó en [su documentación](https://api-docs.deepseek.com/).
+
+**Otra API compatible** permite configurar la URL base, la clave y el ID de modelo de un servicio compatible con Chat Completions (`/chat/completions`). Incluí `/v1` en la base cuando lo requiera el proveedor. El catálogo (`/models`) es opcional: si no está disponible, ingresá el ID manualmente. No implica compatibilidad con protocolos propios de todos los proveedores.
+
+Las claves se guardan fuera de los pliegos y sus exportaciones, separadas por proveedor y URL. El consumo y los costos corresponden a la cuenta del proveedor elegido.
+
+Los títulos de notas son únicos dentro de cada pliego, aunque estén en carpetas distintas. Se ignoran diferencias de mayúsculas y espacios al comparar. Crear una nota de concepto con un título existente carga esa nota para editarla y conserva su ID, su privacidad y su historial. Un cambio simultáneo de la nota bloquea el guardado del borrador anterior. Renombrar una nota con el título de otra se rechaza para no pisar su contenido.
+
+La unificación de duplicadas conserva los contenidos diferentes, los apuntes por página, los resaltados y las versiones originales. Las copias originales quedan archivadas con el ID de la nota de destino; los enlaces de las lecciones se redirigen con una nueva versión del curso. Los registros del tutor y las versiones que citan los IDs originales se conservan.

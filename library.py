@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import math
+import note_titles
 import os
 from pathlib import Path
 import re
@@ -995,6 +996,10 @@ class Library:
             self._ensure_exported(conn)
             row = conn.execute('SELECT body FROM notes WHERE id=?', (note_id,)).fetchone()
             old = json.loads(row['body']) if row else None
+            for other_row in conn.execute('SELECT id,body FROM notes'):
+                other=json.loads(other_row['body'])
+                if other_row['id']!=note_id and not other.get('deletedAt') and note_titles.key(other.get('title'))==note_titles.key(note['title']):
+                    raise ValueError('Ya existe una nota con ese título. Abrí la existente para editarla; tu borrador se conserva.')
             if note_id in issues['duplicate']:
                 raise ValueError('Hay más de un archivo con el mismo ID de apunte; no se guardó para no sobrescribir ninguno. Revisá Apuntes/.')
             if note_id in issues['invalid']:

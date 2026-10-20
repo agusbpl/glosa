@@ -30,6 +30,8 @@ PROVIDERS = {
                    'defaultModel': 'auto', 'url': 'https://freellmapi.co/'},
     'opencode': {'name': 'OpenCode', 'baseUrl': (opencode_service() or {}).get('url', 'http://127.0.0.1:4096'),
                  'defaultModel': 'opencode/deepseek-v4.1-flash-free', 'url': 'https://opencode.ai/v2/docs/'},
+    'deepseek': {'name':'DeepSeek', 'baseUrl':'https://api.deepseek.com', 'defaultModel':'deepseek-flash', 'url':'https://platform.deepseek.com'},
+    'compatible': {'name':'API compatible', 'baseUrl':'', 'defaultModel':'', 'url':''},
     'intern': {'name': 'Intern Discovery', 'baseUrl': 'https://discovery-api.intern-ai.org.cn/v1',
                'defaultModel': '', 'url': 'https://discovery.intern-ai.org.cn/token-plan/home'},
 }
@@ -52,7 +54,7 @@ def configuration(settings):
             or parts.password is not None or parts.query or parts.fragment
             or any(ch.isspace() or ord(ch) < 32 for ch in base)):
         raise ValueError('Usá una URL HTTP(S) sin credenciales, parámetros ni fragmentos.')
-    if provider not in ('freellmapi', 'opencode') and base != PROVIDERS[provider]['baseUrl']:
+    if provider not in ('freellmapi', 'opencode', 'compatible') and base != PROVIDERS[provider]['baseUrl']:
         raise ValueError('La URL de este proveedor es fija.')
     if provider == 'opencode' and parts.hostname not in ('127.0.0.1', 'localhost', '::1'):
         raise ValueError('OpenCode debe servirse desde loopback (localhost, 127.0.0.1 o ::1).')
@@ -67,6 +69,8 @@ def validate_settings(settings):
     model = model.strip()
     if provider == 'openrouter' and not (model == 'openrouter/free' or model.endswith(':free')):
         raise ValueError('Seleccioná un modelo gratuito de OpenRouter.')
+    if provider in ('deepseek','compatible') and not model:
+        raise ValueError('Seleccioná o ingresá el ID del modelo.')
     if provider == 'freellmapi' and not model:
         raise ValueError('Seleccioná un modelo o usá auto en FreeLLMAPI.')
     if provider == 'opencode' and (not model or (model != 'auto' and ('/' not in model or not all(model.split('/', 1))))):

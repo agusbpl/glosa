@@ -19,11 +19,19 @@ from zoneinfo import ZoneInfo
 from library import Library, note_markdown
 import remote_access
 import assessment_rules
+import learning_visuals
+import note_titles
+import course_note_links
+import lesson_export
+import lesson_document
+import activity_calendar
+import study_sessions
 from tutor_output import unpack_reply, preview_reply
 import tutor_context
 import tutor_modes
 import calendar_store
 import margen_agenda
+import omarchy_theme
 import native_folders
 import llm_providers
 import opencode_backend
@@ -38,7 +46,7 @@ KEY = os.environ.get('OPENROUTER_API_KEY', '')
 KEY_LOCK = threading.Lock()
 PROVIDER_KEYS = {
     (provider, details['baseUrl']): os.environ.get(env, '')
-    for provider, env in (('freellmapi', 'FREELLMAPI_API_KEY'), ('intern', 'INTERN_API_KEY'), ('opencode', 'OPENCODE_SERVER_PASSWORD'))
+    for provider, env in (('deepseek', 'DEEPSEEK_API_KEY'), ('freellmapi', 'FREELLMAPI_API_KEY'), ('intern', 'INTERN_API_KEY'), ('opencode', 'OPENCODE_SERVER_PASSWORD'))
     for details in (llm_providers.PROVIDERS[provider],)
 }
 try:
@@ -163,6 +171,36 @@ def validate_course(course):
         ids.add(lesson['id'])
         if lesson.get('priority') not in (1, 2, 3) or not isinstance(lesson.get('minutes'), (int, float)) or not 0 < lesson['minutes'] <= 240:
             raise ValueError('Cada lección requiere prioridad 1–3 y minutos estimados.')
+        if 'mode' in lesson and lesson['mode'] not in ('study', 'exam'):
+            raise ValueError('mode debe ser study o exam.')
+        if 'examTopics' in lesson and (not isinstance(lesson['examTopics'], str) or not lesson['examTopics'].strip()):
+            raise ValueError('examTopics debe describir los temas con texto no vacío.')
+        if 'interactive' in lesson:
+            practice = lesson['interactive']
+            def short_text(value, limit):
+                return isinstance(value, str) and bool(value.strip()) and len(value) <= limit
+            if not isinstance(practice, dict) or practice.get('kind') not in ('classify', 'order'):
+                raise ValueError('Práctica interactiva inválida.')
+            if not all(short_text(practice.get(field), limit) for field, limit in [('title', 200), ('prompt', 2000), ('explanation', 6000)]):
+                raise ValueError('La práctica necesita título, consigna y explicación acotados.')
+            items = practice.get('items')
+            if not isinstance(items, list) or not 2 <= len(items) <= 20:
+                raise ValueError('La práctica necesita entre 2 y 20 elementos.')
+            categories = practice.get('categories')
+            if practice['kind'] == 'classify':
+                if not isinstance(categories, list) or not 2 <= len(categories) <= 10 or not all(short_text(c, 200) for c in categories) or len(set(categories)) != len(categories):
+                    raise ValueError('Categorías interactivas inválidas.')
+            else:
+                categories = [str(i + 1) for i in range(len(items))]
+            item_ids = set()
+            answers = []
+            for item in items:
+                if not isinstance(item, dict) or not short_text(item.get('id'), 100) or item['id'] in item_ids or not short_text(item.get('text'), 1000) or item.get('answer') not in categories:
+                    raise ValueError('Elemento interactivo inválido o duplicado.')
+                item_ids.add(item['id'])
+                answers.append(item['answer'])
+            if practice['kind'] == 'order' and len(set(answers)) != len(items):
+                raise ValueError('El orden debe usar cada posición una vez.')
         blocks = lesson.get('blocks')
         if not isinstance(blocks, list) or not blocks:
             raise ValueError('Cada lección requiere bloques.')
@@ -174,6 +212,7 @@ def validate_course(course):
             for ref in b.get('references', []):
                 if not isinstance(ref, dict) or ref.get('sourceId') not in source_ids or not isinstance(ref.get('page'), int) or ref['page'] < 1:
                     raise ValueError('Referencia de bloque inválida.')
+        learning_visuals.validate(lesson.get('visuals', []), block_ids)
         exercises = lesson.get('exercises')
         if not isinstance(exercises, list) or not exercises:
             raise ValueError('Cada lección requiere actividades.')
@@ -330,7 +369,7 @@ def remaining_minutes(settings, today=None, events=None):
         cursor += timedelta(days=1)
     spent_seconds=0
     for ev in events or []:
-        if ev['kind']=='study_time':
+        if ev['kind']=='study_time' and ev['data'].get('tracking')!='automatic':
             try:
                 if datetime.fromisoformat(ev['timestamp']).astimezone(LOCAL_ZONE).date()==today:
                     spent_seconds += max(0, float(ev['data'].get('seconds',0)))
@@ -557,6 +596,7 @@ TUTOR_POLICY += '\n' + (ROOT / 'docs/evaluacion-rigurosa.md').read_text() + '\nA
 TUTOR_POLICY += '\nLimitá reply a unas 250 palabras. evidence contiene solo textos legibles; los objetos de criterios pertenecen a criterionChecks. No nombres alternativas por posición, número o letra: el orden presentado se mezcla. Referite al contenido de la opción.'
 TUTOR_POLICY += '\nEl estudiante elige el contexto. contextScope describe el material recibido: una búsqueda aporta solo las páginas indicadas, nunca significa que viste todo el libro. Admití páginas sin texto o fuentes ausentes; no inventes citas ni supongas conocimiento de lo excluido.'
 TUTOR_POLICY += '\nAñadí notebook: [] o hasta tres objetos {kind: doubt|insight|decision, text: texto breve, quote: cita literal del mensaje actual del estudiante}. Es el Cuaderno de lo importante: registrá únicamente una duda concreta que sigue abierta, una relación conceptual valiosa o una decisión de repaso motivada por esa evidencia. No copies cada respuesta, tu explicación ni la evaluación completa; no anotes saludos, intentos de prueba, frases vacías o repitas entradas existentes. Usá [] si no hay nada relevante. Las notas son síntesis propuestas por vos, no evidencia independiente ni una declaración de que el estudiante aprendió. La cita debe pertenecer al mensaje actual y sustentar el tema de la nota. No reveles contexto excluido.'
+TUTOR_POLICY += '\nEn reply usá lenguaje estudiantil: bien comprendido, parcialmente comprendido, necesita reforzarse o evidencia insuficiente según corresponda. Reservá met/partial/not_met/uncertain para criterionChecks. No expliques protocolos internos, políticas de adaptación ni reglas de intervención; devolvé evidencia y un próximo paso útil, sin nota oficial.'
 TUTOR_POLICY += '\nDevolvé la respuesta final directamente: comenzá el JSON con reply. No incluyas análisis interno, deliberaciones, borradores ni comentarios sobre cómo vas a construir el JSON. La explicación al estudiante debe resumir evidencia y próximos pasos.'
 
 def tutor(cid, lid, message, exercise_id=None, context_revision=None):
@@ -841,14 +881,14 @@ def tutor_modes_api(body):
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
-    def send(self, data, status=200, content_type='application/json; charset=utf-8', filename=None, extra_headers=None):
+    def send(self, data, status=200, content_type='application/json; charset=utf-8', filename=None, extra_headers=None, document_policy=False):
         body = data if isinstance(data,bytes) else (json.dumps(data,ensure_ascii=False).encode() if content_type.startswith('application/json') else str(data).encode())
         self.send_response(status)
         self.send_header('Content-Type',content_type)
         self.send_header('Cache-Control','no-store')
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Referrer-Policy','no-referrer')
-        self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+        self.send_header('Content-Security-Policy',"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" if document_policy else "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
         if filename: self.send_header('Content-Disposition','attachment; filename="'+filename+'"')
         if getattr(self, 'room_redirect', None): self.send_header('X-Glosa-Room-Redirect', self.room_redirect)
         for name, value in (extra_headers or {}).items(): self.send_header(name, value)
@@ -901,6 +941,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed(): return self.send({'error':'Origen no permitido.'},403)
         path = parse.urlparse(self.path).path
         try:
+            if path=='/api/appearance/omarchy': return self.send(omarchy_theme.palette())
             if path=='/api/author-folders':
                 import author_pliego
                 folder=parse.parse_qs(parse.urlparse(self.path).query).get('path',[''])[0]
@@ -911,6 +952,11 @@ class Handler(BaseHTTPRequestHandler):
                 start=parse.parse_qs(parse.urlparse(self.path).query).get('from',[None])[0]
                 return self.send(margen_agenda.snapshot(DATA, ROOT, start=start))
             if path=='/api/rooms': return self.send({'rooms': rooms.list_rooms(DATA, ROOT), 'active': active_workspace()['id'], **rooms.inventory(DATA, ROOT)})
+            if path=='/api/lesson-export-document':
+                options=parse.parse_qs(parse.urlparse(self.path).query).get('options',[''])[0]
+                if len(options)>16000: raise ValueError('Selección demasiado grande.')
+                return self.send(lesson_document.render(sys.modules[__name__],json.loads(options)),content_type='text/html; charset=utf-8',document_policy=True)
+            if path=='/api/lesson-export-manifest': return self.send(lesson_export.inventory(sys.modules[__name__]))
             if path=='/api/rooms/export':
                 scope=active_workspace()
                 return self.send(rooms.export_zip(scope['data'], scope['root']), content_type='application/zip', filename='pliego-glosa.zip')
@@ -919,6 +965,12 @@ class Handler(BaseHTTPRequestHandler):
                 s['room']={'id':active_workspace()['id'], 'title': rooms.room(DATA, ROOT, active_workspace()['id'])['title'], 'tutorial': active_workspace().get('kind') == 'tutorial'}
                 s['recommendations']={c['id']:recommend(c,s['events'],s['settings']) for c in s['courses']}
                 return self.send(s)
+            if path=='/api/activity-calendar':
+                year=parse.parse_qs(parse.urlparse(self.path).query).get('year',[None])[0]
+                return self.send(activity_calendar.summary(sys.modules[__name__],year))
+            if path=='/api/study-summary':
+                query = parse.parse_qs(parse.urlparse(self.path).query)
+                return self.send(study_sessions.summary(sys.modules[__name__], start=query.get('from',[None])[0], end=query.get('to',[None])[0]))
             if path=='/api/export.json':
                 s=snapshot(); s.pop('tutorConnected',None)
                 return self.send(s,filename='historial-estudio.json')
@@ -957,7 +1009,7 @@ class Handler(BaseHTTPRequestHandler):
                 settings = provider_options(dict(parse.parse_qsl(parse.urlparse(self.path).query)))
                 provider, base = llm_providers.configuration(settings)
                 if provider != 'openrouter':
-                    return self.send({'message':'Consultá el saldo y los límites en el panel de '+llm_providers.PROVIDERS[provider]['name']+'.', 'url':base.removesuffix('/v1') if provider=='freellmapi' else llm_providers.PROVIDERS[provider]['url']})
+                    return self.send({'message':'Consultá el saldo y los límites en el panel de '+llm_providers.PROVIDERS[provider]['name']+'.', 'url':base.removesuffix('/v1') if provider=='freellmapi' else llm_providers.PROVIDERS[provider]['url'] or base})
                 d=openrouter('key')['data']
                 return self.send({'freeRequests':d.get('free_model_daily_requests'),'freeTier':d.get('is_free_tier')})
             if path.startswith('/sources/'):
@@ -995,6 +1047,17 @@ class Handler(BaseHTTPRequestHandler):
             files['/study-tools.js']=('web/study-tools.js','text/javascript; charset=utf-8')
             files['/tutor-modes.css']=('web/tutor-modes.css','text/css; charset=utf-8')
             files['/tutor-modes.js']=('web/tutor-modes.js','text/javascript; charset=utf-8')
+            files['/interactive-practice.js']=('web/interactive-practice.js','text/javascript; charset=utf-8')
+            files['/learning-visuals.js']=('web/learning-visuals.js','text/javascript; charset=utf-8')
+            files['/view-position.js']=('web/view-position.js','text/javascript; charset=utf-8')
+            files['/focus-clock.js']=('web/focus-clock.js','text/javascript; charset=utf-8')
+            files['/lesson-export.js']=('web/lesson-export.js','text/javascript; charset=utf-8')
+            files['/lesson-export.css']=('web/lesson-export.css','text/css; charset=utf-8')
+            files['/activity-calendar.js']=('web/activity-calendar.js','text/javascript; charset=utf-8')
+            files['/activity-calendar.css']=('web/activity-calendar.css','text/css; charset=utf-8')
+            files['/activity-tracker.js']=('web/activity-tracker.js','text/javascript; charset=utf-8')
+            files['/focus-panel.js']=('web/focus-panel.js','text/javascript; charset=utf-8')
+            files['/focus-panel.css']=('web/focus-panel.css','text/css; charset=utf-8')
             if path in files:
                 f,typ=files[path]; return self.send((ROOT/f).read_bytes(),content_type=typ)
             return self.send({'error':'No encontrado.'},404)
@@ -1010,6 +1073,8 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < size <= (82_000_000 if path=='/api/rooms/import' else 32_000_000 if path=='/api/documents' else 8_000_000): raise ValueError('Archivo vacío o demasiado grande.')
             body=json.loads(self.rfile.read(size))
             if not isinstance(body, dict): raise ValueError('Se requiere un objeto JSON.')
+            if path=='/api/lesson-export': return self.send(lesson_document.render(sys.modules[__name__],body),content_type='text/html; charset=utf-8',filename='lecciones-glosa.html')
+            if path=='/api/study-segments': return self.send(study_sessions.save(sys.modules[__name__], body))
             if path=='/api/agenda': return self.send(margen_agenda.save(DATA, ROOT, body))
             if path=='/api/margen/choose-folder': return self.send(native_folders.choose(rooms.margen(DATA,create=False)['path']))
             if path=='/api/margen': return self.send(rooms.set_margen(DATA,body.get('folder')))
@@ -1071,14 +1136,19 @@ class Handler(BaseHTTPRequestHandler):
                         c.execute('UPDATE events SET body=? WHERE id=?',(json.dumps(updated,ensure_ascii=False),body['id']))
                 return self.send({'ok':True})
             if path=='/api/notes': return self.send(library().save_note(body))
+            if path=='/api/note-link/remove': return self.send(course_note_links.unlink(sys.modules[__name__],body))
             if path=='/api/study-note':
+                link_selection=body.get('linkSelection',True)
+                if type(link_selection) is not bool: raise ValueError('Enlace de nota inválido.')
+                fingerprint_data={k:body.get(k) for k in ('courseId','lessonId','version','blockId','quote','start','end','title','content')}
+                if not link_selection: fingerprint_data['linkSelection']=False
                 request_id=body.get('requestId')
                 if not isinstance(request_id,str) or not re.fullmatch(r'[A-Za-z0-9_.-]{1,100}',request_id): raise ValueError('Solicitud de apunte inválida.')
                 with connect() as conn:
                     prior=conn.execute('SELECT body FROM study_note_requests WHERE id=?',(request_id,)).fetchone()
                     if prior:
                         saved=json.loads(prior['body'])
-                        if saved.get('fingerprint')!=hashlib.sha256(json.dumps({k:body.get(k) for k in ('courseId','lessonId','version','blockId','quote','start','end','title','content')},sort_keys=True,ensure_ascii=False).encode()).hexdigest(): raise ValueError('La solicitud ya se usó para otro contenido.')
+                        if saved.get('fingerprint')!=hashlib.sha256(json.dumps(fingerprint_data,sort_keys=True,ensure_ascii=False).encode()).hexdigest(): raise ValueError('La solicitud ya se usó para otro contenido.')
                         return self.send(saved['note'])
                 course_id,lesson_id,block_id=body.get('courseId'),body.get('lessonId'),body.get('blockId')
                 quote,start,end,title,content=(body.get(k) for k in ('quote','start','end','title','content'))
@@ -1092,10 +1162,27 @@ class Handler(BaseHTTPRequestHandler):
                 if not course or course['version']!=body.get('version') or not block: raise ValueError('La lección cambió; no se creó la nota.')
                 encoded=block['text'].encode('utf-16-le')
                 if end*2>len(encoded) or encoded[start*2:end*2].decode('utf-16-le')!=quote: raise ValueError('La selección ya no coincide con la lección.')
-                fingerprint=hashlib.sha256(json.dumps({k:body.get(k) for k in ('courseId','lessonId','version','blockId','quote','start','end','title','content')},sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+                fingerprint=hashlib.sha256(json.dumps(fingerprint_data,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
                 note_id='study-'+hashlib.sha256(request_id.encode()).hexdigest()[:32]
-                prior_note=next((n for n in library().snapshot()['notes'] if n['id']==note_id),None)
-                note=library().save_note({**({'revision':prior_note['revision']} if prior_note else {}),'id':note_id,'title':title.strip(),'folder':'','content':content,'contentFormat':'markdown','shared':False,'documentId':None,'page':None,'writingScope':'general','pageNotes':{},'anchors':[]})
+                matches=[n for n in library().snapshot()['notes'] if note_titles.key(n['title'])==note_titles.key(title)]
+                if len(matches)>1: raise ValueError('Hay notas duplicadas pendientes de unificar.')
+                prior_note=matches[0] if matches else None
+                if prior_note:
+                    # Si un intento anterior guardó la nota pero no el enlace,
+                    # reanudar solo cuando coincidan su ID y contenido originales.
+                    # Las notas previas siguen requiriendo ID y revisión explícitos.
+                    resumed_request = prior_note['id']==note_id and prior_note.get('content')==content
+                    if not resumed_request and (body.get('existingNoteId')!=prior_note['id'] or body.get('existingNoteRevision')!=prior_note['revision']):
+                        raise ValueError('Ya existe esa nota o cambió en otra ventana. Abrila antes de editarla.')
+                    note_id=prior_note['id']
+                elif body.get('existingNoteId'):
+                    raise ValueError('La nota elegida ya no está disponible.')
+                note_body={**prior_note,'title':prior_note['title'],'content':content,'contentFormat':'markdown'} if prior_note else {'id':note_id,'title':title.strip(),'folder':'','content':content,'contentFormat':'markdown','shared':False,'documentId':None,'page':None,'writingScope':'general','pageNotes':{},'anchors':[]}
+                note=library().save_note(note_body)
+                if not link_selection:
+                    with connect() as conn:
+                        conn.execute('INSERT INTO study_note_requests VALUES(?,?)',(request_id,json.dumps({'fingerprint':fingerprint,'note':note},ensure_ascii=False)))
+                    return self.send(note)
                 updated=json.loads(json.dumps(course,ensure_ascii=False));target=next(b for l in updated['lessons'] if l['id']==lesson_id for b in l['blocks'] if b['id']==block_id)
                 source_units=target['text'].encode('utf-16-le')
                 target['text']=(source_units[:start*2].decode('utf-16-le')+'['+quote+'](#note='+note_id+')'+source_units[end*2:].decode('utf-16-le'))
@@ -1154,11 +1241,12 @@ class Handler(BaseHTTPRequestHandler):
                     exercise=next((ex for l in course['lessons'] if l['id']==body['lessonId'] for ex in l['exercises'] if ex['id']==payload.get('exerciseId')),None)
                     if exercise and exercise['type']=='choice' and 'selectedIndex' in payload:
                         index=payload['selectedIndex']
-                        if type(index) is not int or not 0<=index<len(exercise['options']): raise ValueError('Selección de opción inválida.')
+                        unanswered = index is None and not str(payload.get('text', '')).strip()
+                        if not unanswered and (type(index) is not int or not 0<=index<len(exercise['options'])): raise ValueError('Selección de opción inválida.')
                         order=payload.get('presentationOrder',list(range(len(exercise['options']))))
                         if not isinstance(order,list) or any(type(i) is not int for i in order) or sorted(order)!=list(range(len(exercise['options']))): raise ValueError('Orden de opciones inválido.')
-                        payload['presentationOrder']=order;payload['text']=exercise['options'][index]
-                        payload['choiceCorrect']=index==exercise['correctIndex']
+                        payload['presentationOrder']=order;payload['text']='' if unanswered else exercise['options'][index]
+                        payload['choiceCorrect']=None if unanswered else index==exercise['correctIndex']
                     payload['helpReceived']=any(e['kind'] in ('feedback','tutor_reply') and e['courseId']==course['id'] and e['lessonId']==body['lessonId'] and (e['data'].get('exerciseId') in (None,payload.get('exerciseId'))) and e['data'].get('courseVersion')==course['version'] for e in state['events'])
                 payload['courseSha256']=hashlib.sha256(json.dumps(course,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
                 return self.send(event(body['kind'],course['id'],body['lessonId'],payload,body.get('id')))
